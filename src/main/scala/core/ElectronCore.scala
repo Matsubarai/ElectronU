@@ -22,15 +22,24 @@ class ElectronCore extends Module {
   val rf = Module(new GR)
   rf.io.raddr1.valid := 1.B
   rf.io.raddr2.valid := 1.B
-  rf.io.waddr.valid := 1.B
+  rf.io.waddr.valid := !decode.io.ctrl.reg2mem && decode.io.ctrl.branch
   rf.io.raddr1.bits := decode.io.ctrl.rj
-  rf.io.raddr2.bits := decode.io.ctrl.rk
-  rf.io.waddr.bits := decode.io.ctrl.rd
+  rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.branch, decode.io.ctrl.rd, decode.io.ctrl.rk)
+  rf.io.waddr.bits := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
 
-  val si12 = Cat(Fill(20,decode.io.ctrl.imm12(11)), decode.io.ctrl.imm12)
+  val si12 = Cat(Fill(20, decode.io.ctrl.imm26(21)), decode.io.ctrl.imm26(21,10))
   alu.io.src1 := rf.io.rdata1
   alu.io.src2 := Mux(decode.io.ctrl.sel_src2, si12, rf.io.rdata2)
 
+  val br_taken = decode.io.ctrl.branch && ((rf.io.rdata1 === rf.io.rdata2) ^ decode.io.ctrl.bne)
+  val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
+  val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
+  val tgt = rf.io.rdata1 + offs16
+
+  fetch.io.offs.valid := decode.io.ctrl.bl || br_taken
+  fetch.io.offs := Mux(decode.io.ctrl.bl, offs26, offs16)
+  fetch.io.tgt.valid := decode.io.ctrl.jirl
+  fetch.io.tgt.bits := tgt
 
   val d_addr_trans = Module(new AddrTrans)
   d_addr_trans.io.vaddr := alu.io.result
@@ -38,8 +47,9 @@ class ElectronCore extends Module {
   val dram = Module(new DataRAM)
   dram.io.raddr.valid := 1.B
   dram.io.raddr.bits := d_addr_trans.io.paddr
-//  dram.io.waddr.valid :=
-//  dram.io.waddr.bits := d_addr_trans.io.paddr
+  dram.io.waddr.valid := decode.io.ctrl.reg2mem
+  dram.io.waddr.bits := d_addr_trans.io.paddr
+  dram.io.wdata := rf.io.rdata2
 
-  rf.io.wdata := Mux(decode.io.ctrl.sel_wreg, dram.io.wdata, alu.io.result)
+  rf.io.wdata := Mux(decode.io.ctrl.mem2reg, dram.io.wdata, alu.io.result)
 }
