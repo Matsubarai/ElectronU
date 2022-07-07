@@ -1,6 +1,7 @@
 package core
 
 import chisel3._
+import chisel3.stage.ChiselStage
 import chisel3.util._
 
 class ElectronCore extends Module {
@@ -37,7 +38,7 @@ class ElectronCore extends Module {
   val tgt = rf.io.rdata1 + offs16
 
   fetch.io.offs.valid := decode.io.ctrl.bl || br_taken
-  fetch.io.offs := Mux(decode.io.ctrl.bl, offs26, offs16)
+  fetch.io.offs.bits := Mux(decode.io.ctrl.bl, offs26, offs16)
   fetch.io.tgt.valid := decode.io.ctrl.jirl
   fetch.io.tgt.bits := tgt
 
@@ -53,4 +54,8 @@ class ElectronCore extends Module {
 
   val si20 = Cat(decode.io.ctrl.imm26(24,5), 0.U(12.W))
   rf.io.wdata := Mux(decode.io.ctrl.lui, si20, Mux(decode.io.ctrl.mem2reg, dram.io.wdata, alu.io.result))
+}
+
+object generator extends App{
+  (new ChiselStage).emitVerilog(new ElectronCore(), args)
 }

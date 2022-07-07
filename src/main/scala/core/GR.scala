@@ -21,6 +21,8 @@ class GR extends Module {
     }.otherwise {
       io.rdata1 := regfile(io.raddr1.bits)
     }
+  }.otherwise{
+    io.rdata1 := 0.U
   }
 
   when(io.raddr2.valid){
@@ -29,6 +31,8 @@ class GR extends Module {
     }.otherwise {
       io.rdata2 := regfile(io.raddr2.bits)
     }
+  }.otherwise{
+    io.rdata2 := 0.U
   }
 
   when(io.waddr.valid && io.waddr.bits =/= 0.U){

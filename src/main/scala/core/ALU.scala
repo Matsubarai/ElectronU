@@ -14,6 +14,7 @@ object ALU
   def ALU_SRL  = "b0101".U
   def ALU_OR   = "b0110".U
   def ALU_AND  = "b0111".U
+  def ALU_X    = "b1000".U
   def ALU_NOR  = "b1001".U
   def ALU_SUB  = "b1010".U
   def ALU_SRA  = "b1011".U

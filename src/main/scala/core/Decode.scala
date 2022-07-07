@@ -53,6 +53,8 @@ class Decode extends Module {
     io.ctrl.alu_ctrl := ALU_XOR
   }.elsewhen(io.instr === NOR){
     io.ctrl.alu_ctrl := ALU_NOR
+  }.otherwise{
+    io.ctrl.alu_ctrl := ALU_X
   }
 
   when(io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W){
