@@ -37,7 +37,7 @@ class ALU extends Module {
   val src2_inv = Mux(is_sub, ~io.src2, io.src2)
   val adder_result = io.src1 + src2_inv + is_sub
 
-  val is_sltu = io.ctrl(1) // sltu
+  val is_sltu = io.ctrl(1)
   val slt_result = Mux(io.src1(31) === io.src2(31), adder_result(31), Mux(is_sltu, io.src2(31), io.src1(31)))
 
   val shamt = io.src2(4, 0)
