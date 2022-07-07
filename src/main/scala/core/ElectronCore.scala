@@ -22,7 +22,7 @@ class ElectronCore extends Module {
   val rf = Module(new GR)
   rf.io.raddr1.valid := 1.B
   rf.io.raddr2.valid := 1.B
-  rf.io.waddr.valid := !decode.io.ctrl.reg2mem && decode.io.ctrl.branch
+  rf.io.waddr.valid := !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch)
   rf.io.raddr1.bits := decode.io.ctrl.rj
   rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.branch, decode.io.ctrl.rd, decode.io.ctrl.rk)
   rf.io.waddr.bits := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
@@ -45,11 +45,12 @@ class ElectronCore extends Module {
   d_addr_trans.io.vaddr := alu.io.result
 
   val dram = Module(new DataRAM)
-  dram.io.raddr.valid := 1.B
+  dram.io.raddr.valid := decode.io.ctrl.mem2reg
   dram.io.raddr.bits := d_addr_trans.io.paddr
   dram.io.waddr.valid := decode.io.ctrl.reg2mem
   dram.io.waddr.bits := d_addr_trans.io.paddr
   dram.io.wdata := rf.io.rdata2
 
-  rf.io.wdata := Mux(decode.io.ctrl.mem2reg, dram.io.wdata, alu.io.result)
+  val si20 = Cat(decode.io.ctrl.imm26(24,5), 0.U(12.W))
+  rf.io.wdata := Mux(decode.io.ctrl.lui, si20, Mux(decode.io.ctrl.mem2reg, dram.io.wdata, alu.io.result))
 }
