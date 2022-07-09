@@ -14,7 +14,6 @@ object ALU
   def ALU_SRL  = "b0101".U
   def ALU_OR   = "b0110".U
   def ALU_AND  = "b0111".U
-  def ALU_X    = "b1000".U
   def ALU_NOR  = "b1001".U
   def ALU_SUB  = "b1010".U
   def ALU_SRA  = "b1011".U
@@ -50,6 +49,7 @@ class ALU extends Module {
   val logic_result = Mux(io.ctrl === ALU_XOR || io.ctrl === ALU_OR, io.src1 ^ io.src2, 0.U) |
     Mux(io.ctrl === ALU_OR || io.ctrl === ALU_AND, io.src1 & io.src2, (~(io.src1 | io.src2)).asUInt)
 
+  io.result := DontCare
   when(io.ctrl === ALU_ADD || io.ctrl === ALU_SUB){
     io.result := adder_result
   }.elsewhen(io.ctrl === ALU_SLT || io.ctrl === ALU_SLTU){
@@ -58,7 +58,5 @@ class ALU extends Module {
     io.result := shift_result
   }.elsewhen(io.ctrl === ALU_AND || io.ctrl === ALU_OR || io.ctrl === ALU_XOR || io.ctrl === ALU_NOR){
     io.result := logic_result
-  }.otherwise{
-    io.result := 0.U
   }
 }

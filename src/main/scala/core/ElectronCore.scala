@@ -17,9 +17,9 @@ class ElectronCore extends Module {
   io.pc := fetch.io.pc
 
   val iram = Module(new SinglePortRAM)
-  iram.io.raddr.valid := 1.B
-  iram.io.raddr.bits := i_addr_trans.io.paddr(15,2)
-  iram.io.waddr.valid := 0.B
+  iram.io.en := 1.B
+  iram.io.addr := i_addr_trans.io.paddr(15,2)
+  iram.io.wen := 0.B
 
   //ID
   val decode = Module(new Decode)
@@ -54,10 +54,9 @@ class ElectronCore extends Module {
   d_addr_trans.io.vaddr := alu.io.result
 
   val dram = Module(new SinglePortRAM)
-  dram.io.raddr.valid := decode.io.ctrl.mem2reg
-  dram.io.raddr.bits := d_addr_trans.io.paddr
-  dram.io.waddr.valid := decode.io.ctrl.reg2mem
-  dram.io.waddr.bits := d_addr_trans.io.paddr
+  dram.io.en := decode.io.ctrl.mem2reg || decode.io.ctrl.reg2mem
+  dram.io.addr := d_addr_trans.io.paddr
+  dram.io.wen := decode.io.ctrl.reg2mem
   dram.io.wdata := rf.io.rdata2
 
   //WB
