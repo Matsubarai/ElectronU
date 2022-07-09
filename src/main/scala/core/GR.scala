@@ -15,25 +15,9 @@ class GR extends Module {
 
   val regfile = Mem(32, UInt(32.W))
 
-  when(io.raddr1.valid){
-    when(io.raddr1.bits === 0.U) {
-      io.rdata1 := 0.U
-    }.otherwise {
-      io.rdata1 := regfile(io.raddr1.bits)
-    }
-  }.otherwise{
-    io.rdata1 := 0.U
-  }
+  io.rdata1 := Mux(io.raddr1.bits === 0.U || !io.raddr1.valid, 0.U, regfile(io.raddr1.bits))
 
-  when(io.raddr2.valid){
-    when(io.raddr2.bits === 0.U) {
-      io.rdata2 := 0.U
-    }.otherwise {
-      io.rdata2 := regfile(io.raddr2.bits)
-    }
-  }.otherwise{
-    io.rdata2 := 0.U
-  }
+  io.rdata2 := Mux(io.raddr2.bits === 0.U || !io.raddr2.valid, 0.U, regfile(io.raddr2.bits))
 
   when(io.waddr.valid && io.waddr.bits =/= 0.U){
     regfile(io.waddr.bits) := io.wdata

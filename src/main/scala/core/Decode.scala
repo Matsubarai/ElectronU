@@ -57,51 +57,20 @@ class Decode extends Module {
     io.ctrl.alu_ctrl := ALU_X
   }
 
-  when(io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W){
-    io.ctrl.sel_src2 := 1.B
-  }.otherwise{
-    io.ctrl.sel_src2 := 0.B
-  }
+  io.ctrl.sel_src2 := io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W
 
-  when(io.instr === LD_W){
-    io.ctrl.mem2reg := 1.B
-  }.otherwise{
-    io.ctrl.mem2reg := 0.B
-  }
+  io.ctrl.mem2reg := io.instr === LD_W
 
-  when(io.instr === ST_W){
-    io.ctrl.reg2mem := 1.B
-  }.otherwise{
-    io.ctrl.reg2mem := 0.B
-  }
+  io.ctrl.reg2mem := io.instr === ST_W
 
-  when(io.instr === BEQ || io.instr === BNE){
-    io.ctrl.branch := 1.B
-  }.otherwise{
-    io.ctrl.branch := 0.B
-  }
+  io.ctrl.branch := io.instr === BEQ || io.instr === BNE
 
-  when(io.instr === BNE){
-    io.ctrl.bne := 1.B
-  }.otherwise{
-    io.ctrl.bne := 0.B
-  }
+  io.ctrl.bne := io.instr === BNE
 
-  when(io.instr === BL){
-    io.ctrl.bl := 1.B
-  }.otherwise{
-    io.ctrl.bl := 0.B
-  }
+  io.ctrl.bl := io.instr === BL
 
-  when(io.instr === JIRL){
-    io.ctrl.jirl := 1.B
-  }.otherwise{
-    io.ctrl.jirl := 0.B
-  }
+  io.ctrl.jirl := io.instr === JIRL
 
-  when(io.instr === LU12I_W){
-    io.ctrl.lui := 1.B
-  }.otherwise{
-    io.ctrl.lui := 0.B
-  }
+  io.ctrl.lui := io.instr === LU12I_W
+
 }
