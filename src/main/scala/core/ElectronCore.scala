@@ -24,10 +24,10 @@ class ElectronCore extends Module {
 
   //ID
   val br_taken_flush = Wire(Bool())
-  val if_id_reg_instr = Pipe(1.B, Mux(br_taken_flush, "b0000001010_000000000000_00000_00000".U, iram.io.rdata))
+  val if_id_instr = Pipe(1.B, Mux(br_taken_flush, "b0000001010_000000000000_00000_00000".U, iram.io.rdata))
 
   val decode = Module(new Decode)
-  decode.io.instr := if_id_reg_instr.bits
+  decode.io.instr := if_id_instr.bits
 
   val rf = Module(new GR)
   rf.io.raddr1.valid := 1.B
@@ -47,48 +47,48 @@ class ElectronCore extends Module {
   br_taken_flush := decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl
 
   //EXE
-  val id_exe_reg_ctrl = Pipe(1.B, decode.io.ctrl)
-  val id_exe_reg_rdata1 = Pipe(1.B, rf.io.rdata1)
-  val id_exe_reg_rdata2 = Pipe(1.B, rf.io.rdata2)
-  val id_exe_reg_rf_wen = Pipe(1.B, !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch))
-  val id_exe_reg_rf_waddr = Pipe(1.B, Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd))
+  val id_exe_ctrl = Pipe(1.B, decode.io.ctrl)
+  val id_exe_rdata1 = Pipe(1.B, rf.io.rdata1)
+  val id_exe_rdata2 = Pipe(1.B, rf.io.rdata2)
+  val id_exe_rf_wen = Pipe(1.B, !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch))
+  val id_exe_rf_waddr = Pipe(1.B, Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd))
 
   val alu = Module(new ALU)
-  alu.io.ctrl := id_exe_reg_ctrl.bits.alu_ctrl
-  val si12 = Cat(Fill(20, id_exe_reg_ctrl.bits.imm26(21)), id_exe_reg_ctrl.bits.imm26(21,10))
-  alu.io.src1 := id_exe_reg_rdata1.bits
-  alu.io.src2 := Mux(id_exe_reg_ctrl.bits.sel_src2, si12, id_exe_reg_rdata2.bits)
+  alu.io.ctrl := id_exe_ctrl.bits.alu_ctrl
+  val si12 = Cat(Fill(20, id_exe_ctrl.bits.imm26(21)), id_exe_ctrl.bits.imm26(21,10))
+  alu.io.src1 := id_exe_rdata1.bits
+  alu.io.src2 := Mux(id_exe_ctrl.bits.sel_src2, si12, id_exe_rdata2.bits)
 
   //MEM
-  val exe_mem_reg_alu_result = Pipe(1.B, alu.io.result)
-  val exe_mem_reg_mem2reg = Pipe(1.B, id_exe_reg_ctrl.bits.mem2reg)
-  val exe_mem_reg_lui = Pipe(1.B, id_exe_reg_ctrl.bits.lui)
-  val exe_mem_reg_imm26 = Pipe(1.B, id_exe_reg_ctrl.bits.imm26)
-  val exe_mem_reg_rf_wen = Pipe(id_exe_reg_rf_wen)
-  val exe_mem_reg_rf_waddr = Pipe(id_exe_reg_rf_waddr)
+  val exe_mem_alu_result = Pipe(1.B, alu.io.result)
+  val exe_mem_mem2reg = Pipe(1.B, id_exe_ctrl.bits.mem2reg)
+  val exe_mem_lui = Pipe(1.B, id_exe_ctrl.bits.lui)
+  val exe_mem_imm26 = Pipe(1.B, id_exe_ctrl.bits.imm26)
+  val exe_mem_rf_wen = Pipe(id_exe_rf_wen)
+  val exe_mem_rf_waddr = Pipe(id_exe_rf_waddr)
 
   val d_addr_trans = Module(new AddrTrans)
   d_addr_trans.io.vaddr := alu.io.result // pre-MEM
 
   val dram = Module(new SinglePortSyncRAM)
-  dram.io.en := id_exe_reg_ctrl.bits.mem2reg || id_exe_reg_ctrl.bits.reg2mem //pre-MEM
+  dram.io.en := id_exe_ctrl.bits.mem2reg || id_exe_ctrl.bits.reg2mem //pre-MEM
   dram.io.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
-  dram.io.wen := id_exe_reg_ctrl.bits.reg2mem //pre-MEM
-  dram.io.wdata := id_exe_reg_rdata2.bits //pre-MEM
+  dram.io.wen := id_exe_ctrl.bits.reg2mem //pre-MEM
+  dram.io.wdata := id_exe_rdata2.bits //pre-MEM
 
   //WB
-  val mem_wb_reg_rdata = Pipe(1.B, dram.io.rdata)
-  val mem_wb_reg_alu_result = Pipe(exe_mem_reg_alu_result)
-  val mem_wb_reg_mem2reg = Pipe(exe_mem_reg_mem2reg)
-  val mem_wb_reg_lui = Pipe(exe_mem_reg_lui)
-  val mem_wb_reg_imm26 = Pipe(exe_mem_reg_imm26)
-  val mem_wb_reg_rf_wen = Pipe(exe_mem_reg_rf_wen)
-  val mem_wb_reg_rf_waddr = Pipe(exe_mem_reg_rf_waddr)
+  val mem_wb_rdata = Pipe(1.B, dram.io.rdata)
+  val mem_wb_alu_result = Pipe(exe_mem_alu_result)
+  val mem_wb_mem2reg = Pipe(exe_mem_mem2reg)
+  val mem_wb_lui = Pipe(exe_mem_lui)
+  val mem_wb_imm26 = Pipe(exe_mem_imm26)
+  val mem_wb_rf_wen = Pipe(exe_mem_rf_wen)
+  val mem_wb_rf_waddr = Pipe(exe_mem_rf_waddr)
 
-  val si20 = Cat(mem_wb_reg_imm26.bits(24,5), 0.U(12.W))
-  rf.io.waddr.valid := mem_wb_reg_rf_wen.bits
-  rf.io.waddr.bits := mem_wb_reg_rf_waddr.bits
-  rf.io.wdata := Mux(mem_wb_reg_lui.bits, si20, Mux(mem_wb_reg_mem2reg.bits, mem_wb_reg_rdata.bits, mem_wb_reg_alu_result.bits))
+  val si20 = Cat(mem_wb_imm26.bits(24,5), 0.U(12.W))
+  rf.io.waddr.valid := mem_wb_rf_wen.bits
+  rf.io.waddr.bits := mem_wb_rf_waddr.bits
+  rf.io.wdata := Mux(mem_wb_lui.bits, si20, Mux(mem_wb_mem2reg.bits, mem_wb_rdata.bits, mem_wb_alu_result.bits))
 }
 
 object Generator extends App{
