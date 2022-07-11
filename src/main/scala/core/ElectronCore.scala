@@ -10,57 +10,81 @@ class ElectronCore extends Module {
   })
 
   //IF
+  val ld_stall = Wire(Bool())
   val fetch = Module(new Fetch)
+  fetch.io.stall := ld_stall
 
   val i_addr_trans = Module(new AddrTrans)
   i_addr_trans.io.vaddr := fetch.io.npc //pre-IF
   io.pc := fetch.io.pc
 
-  val iram = Module(new SinglePortRAM)
+  val iram = Module(new SinglePortSyncRAM)
   iram.io.en := 1.B
   iram.io.addr := i_addr_trans.io.paddr(15,2) //pre-IF
   iram.io.wen := 0.B
   iram.io.wdata := DontCare
 
-  //ID
   val br_taken_flush = Wire(Bool())
-  val if_id_instr = Pipe(1.B, Mux(br_taken_flush, "b0000001010_000000000000_00000_00000".U, iram.io.rdata))
+  val instr = Wire(new Bundle {
+    val valid = Bool()
+    val bits = UInt()
+  })
+  instr.valid := !br_taken_flush
+  instr.bits := iram.io.rdata
+
+  //ID
+  val if_id_instr = RegEnable(instr, !ld_stall)
 
   val decode = Module(new Decode)
   decode.io.instr := if_id_instr.bits
 
   val rf = Module(new GR)
-  rf.io.raddr1.valid := 1.B
-  rf.io.raddr2.valid := 1.B
+  rf.io.raddr1.valid := if_id_instr.valid
+  rf.io.raddr2.valid := if_id_instr.valid
   rf.io.raddr1.bits := decode.io.ctrl.rj
   rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.branch, decode.io.ctrl.rd, decode.io.ctrl.rk)
+  val rf_rdata1 = Wire(UInt(32.W))
+  val rf_rdata2 = Wire(UInt(32.W))
 
-  val br_taken = decode.io.ctrl.branch && ((rf.io.rdata1 === rf.io.rdata2) ^ decode.io.ctrl.bne)
+  val br_taken = decode.io.ctrl.branch && ((rf_rdata1 === rf_rdata2) ^ decode.io.ctrl.bne)
   val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
   val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
 
-  fetch.io.offs.valid := decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl
+  fetch.io.offs.valid := if_id_instr.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
   fetch.io.offs.bits := Mux(decode.io.ctrl.bl, offs26, offs16)
-  fetch.io.base.valid := decode.io.ctrl.jirl
-  fetch.io.base.bits := rf.io.rdata1
+  fetch.io.base.valid := if_id_instr.valid && decode.io.ctrl.jirl
+  fetch.io.base.bits := rf_rdata1
 
-  br_taken_flush := decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl
+  br_taken_flush := if_id_instr.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
 
-  val id_exe_sigs = new Bundle{
-    val alu_ctrl = decode.io.ctrl.alu_ctrl
-    val sel_src2 = decode.io.ctrl.sel_src2
-    val reg2mem = decode.io.ctrl.reg2mem
-    val mem2reg = decode.io.ctrl.mem2reg
-    val lui = decode.io.ctrl.lui
-    val imm26 = decode.io.ctrl.imm26
-    val rf_rdata1 = rf.io.rdata1
-    val rf_rdata2 = rf.io.rdata2
-    val rf_wen = !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch)
-    val rf_waddr = Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
-  }
+  val id_exe_sigs = Wire(new Bundle{
+    val alu_ctrl = UInt()
+    val sel_src2 = Bool()
+    val reg2mem = Bool()
+    val mem2reg = Bool()
+    val lui = Bool()
+    val imm26 = UInt()
+    val rf_rdata1 = UInt()
+    val rf_rdata2 = UInt()
+    val rf_wen = Bool()
+    val rf_waddr = UInt()
+  })
+  id_exe_sigs.alu_ctrl := decode.io.ctrl.alu_ctrl
+  id_exe_sigs.sel_src2 := decode.io.ctrl.sel_src2
+  id_exe_sigs.reg2mem := decode.io.ctrl.reg2mem
+  id_exe_sigs.mem2reg := decode.io.ctrl.mem2reg
+  id_exe_sigs.lui := decode.io.ctrl.lui
+  id_exe_sigs.imm26 := decode.io.ctrl.imm26
+  id_exe_sigs.rf_rdata1 := rf_rdata1
+  id_exe_sigs.rf_rdata2 := rf_rdata2
+  id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch)
+  id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
 
   //EXE
-  val id_exe = Pipe(if_id_instr.valid, id_exe_sigs)
+  val id_exe = Pipe(if_id_instr.valid && !ld_stall, id_exe_sigs)
+
+  ld_stall := if_id_instr.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
+    (id_exe.bits.rf_waddr === rf.io.raddr1.bits || id_exe.bits.rf_waddr === rf.io.raddr2.bits)
 
   val alu = Module(new ALU)
   alu.io.ctrl := id_exe.bits.alu_ctrl
@@ -68,44 +92,74 @@ class ElectronCore extends Module {
   alu.io.src1 := id_exe.bits.rf_rdata1
   alu.io.src2 := Mux(id_exe.bits.sel_src2, si12, id_exe.bits.rf_rdata2)
 
-  val exe_mem_sigs = new Bundle{
-    val alu_result = alu.io.result
-    val mem2reg = id_exe.bits.mem2reg
-    val lui = id_exe.bits.lui
-    val imm26 = id_exe.bits.imm26
-    val rf_wen = id_exe.bits.rf_wen
-    val rf_waddr = id_exe.bits.rf_waddr
-  }
+  val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
+  val alu_result = Mux(id_exe.bits.lui, si20, alu.io.result)
+
+  val exe_mem_sigs = Wire(new Bundle{
+    val alu_result = UInt()
+    val mem2reg = Bool()
+    val rf_wen = Bool()
+    val rf_waddr = UInt()
+  })
+  exe_mem_sigs.alu_result := alu_result
+  exe_mem_sigs.mem2reg := id_exe.bits.mem2reg
+  exe_mem_sigs.rf_wen := id_exe.bits.rf_wen
+  exe_mem_sigs.rf_waddr := id_exe.bits.rf_waddr
 
   //MEM
   val exe_mem = Pipe(id_exe.valid, exe_mem_sigs)
 
   val d_addr_trans = Module(new AddrTrans)
-  d_addr_trans.io.vaddr := alu.io.result // pre-MEM
+  d_addr_trans.io.vaddr := alu_result // pre-MEM
 
   val dram = Module(new SinglePortSyncRAM)
-  dram.io.en := id_exe.bits.mem2reg || id_exe.bits.reg2mem //pre-MEM
+  dram.io.en := id_exe.valid && (id_exe.bits.mem2reg || id_exe.bits.reg2mem) //pre-MEM
   dram.io.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
-  dram.io.wen := id_exe.bits.reg2mem //pre-MEM
+  dram.io.wen := id_exe.valid && id_exe.bits.reg2mem //pre-MEM
   dram.io.wdata := id_exe.bits.rf_rdata2 //pre-MEM
 
-  val mem_wb_sigs = new Bundle{
-    val dram_rdata = dram.io.rdata
-    val alu_result = exe_mem.bits.alu_result
-    val mem2reg = exe_mem.bits.mem2reg
-    val lui = exe_mem.bits.lui
-    val imm26 = exe_mem.bits.imm26
-    val rf_wen = exe_mem.bits.rf_wen
-    val rf_waddr = exe_mem.bits.rf_waddr
-  }
+  val rf_wdata = Mux(exe_mem.bits.mem2reg, dram.io.rdata, exe_mem.bits.alu_result)
+
+  val mem_wb_sigs = Wire(new Bundle{
+    val rf_wen = Bool()
+    val rf_waddr = UInt()
+    val rf_wdata = UInt()
+  })
+  mem_wb_sigs.rf_wen := exe_mem.bits.rf_wen
+  mem_wb_sigs.rf_waddr := exe_mem.bits.rf_waddr
+  mem_wb_sigs.rf_wdata := rf_wdata
 
   //WB
   val mem_wb = Pipe(exe_mem.valid, mem_wb_sigs)
 
-  val si20 = Cat(mem_wb.bits.imm26(24, 5), 0.U(12.W))
-  rf.io.waddr.valid := mem_wb.bits.rf_wen
+  rf.io.waddr.valid := mem_wb.valid && mem_wb.bits.rf_wen
   rf.io.waddr.bits := mem_wb.bits.rf_waddr
-  rf.io.wdata := Mux(mem_wb.bits.lui, si20, Mux(mem_wb.bits.mem2reg, mem_wb.bits.dram_rdata, mem_wb.bits.alu_result))
+  rf.io.wdata := mem_wb.bits.rf_wdata
+
+  //Forwarding
+  def isForward(wen: Bool, waddr: UInt, raddr: UInt) = wen && waddr === raddr && waddr =/= 0.U
+
+  val forward_r1_exe = isForward(id_exe.bits.rf_wen && !id_exe.bits.mem2reg, id_exe.bits.rf_waddr, rf.io.raddr1.bits)
+  val forward_r1_mem = isForward(exe_mem.bits.rf_wen, exe_mem.bits.rf_waddr, rf.io.raddr1.bits)
+  val forward_r1_wb = isForward(mem_wb.bits.rf_wen, mem_wb.bits.rf_waddr, rf.io.raddr1.bits)
+
+  rf_rdata1 := PriorityMux(Seq(
+    forward_r1_exe -> alu_result,
+    forward_r1_mem -> rf_wdata,
+    forward_r1_wb -> mem_wb.bits.rf_wdata,
+    1.B -> rf.io.rdata1
+  ))
+
+  val forward_r2_exe = isForward(id_exe.bits.rf_wen && !id_exe.bits.mem2reg, id_exe.bits.rf_waddr, rf.io.raddr2.bits)
+  val forward_r2_mem = isForward(exe_mem.bits.rf_wen, exe_mem.bits.rf_waddr, rf.io.raddr2.bits)
+  val forward_r2_wb = isForward(mem_wb.bits.rf_wen, mem_wb.bits.rf_waddr, rf.io.raddr2.bits)
+
+  rf_rdata2 := PriorityMux(Seq(
+    forward_r2_exe -> alu_result,
+    forward_r2_mem -> rf_wdata,
+    forward_r2_wb -> mem_wb.bits.rf_wdata,
+    1.B -> rf.io.rdata2
+  ))
 }
 
 object Generator extends App{
