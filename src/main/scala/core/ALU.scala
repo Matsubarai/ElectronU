@@ -42,7 +42,7 @@ class ALU extends Module {
 
   val shamt = io.src2(4, 0)
   val shift_src = Mux(io.ctrl === ALU_SRL || io.ctrl === ALU_SRA, io.src1, Reverse(io.src1))
-  val shift_result_r = ((Cat(is_sub & shift_src(31), shift_src)).asSInt >> shamt)(31, 0)
+  val shift_result_r = (Cat(is_sub & shift_src(31), shift_src).asSInt >> shamt)(31, 0)
   val shift_result_l = Reverse(shift_result_r)
   val shift_result = Mux(io.ctrl === ALU_SRL || io.ctrl === ALU_SRA, shift_result_r, shift_result_l)
 
