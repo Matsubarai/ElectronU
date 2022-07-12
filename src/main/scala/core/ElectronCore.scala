@@ -18,7 +18,7 @@ class ElectronCore extends Module {
 
   val i_addr_trans = Module(new AddrTrans)
   i_addr_trans.io.vaddr := fetch.io.npc //pre-IF
-  io.pc := fetch.io.pc
+  io.pc := fetch.io.pc.bits
 
   io.imem.en := 1.B
   io.imem.addr := i_addr_trans.io.paddr(15,2) //pre-IF
@@ -33,9 +33,9 @@ class ElectronCore extends Module {
       val pc = UInt()
     }
   })
-  if_id_sigs.valid := !br_taken_flush
+  if_id_sigs.valid := fetch.io.pc.valid && !br_taken_flush
   if_id_sigs.bits.instr := io.imem.rdata
-  if_id_sigs.bits.pc := fetch.io.pc
+  if_id_sigs.bits.pc := fetch.io.pc.bits
 
   //ID
   val if_id = RegEnable(if_id_sigs, !ld_stall)
@@ -103,7 +103,7 @@ class ElectronCore extends Module {
   alu.io.src2 := Mux(id_exe.bits.sel_src2(0), si12, Mux(id_exe.bits.sel_src2(1), ui5, id_exe.bits.rf_rdata2))
 
   val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
-  val alu_result = Mux(id_exe.bits.link, id_exe.bits.pc + 4, Mux(id_exe.bits.lui, si20, alu.io.result))
+  val alu_result = Mux(id_exe.bits.link, id_exe.bits.pc + 4.U, Mux(id_exe.bits.lui, si20, alu.io.result))
 
   val exe_mem_sigs = Wire(new Bundle{
     val alu_result = UInt()
