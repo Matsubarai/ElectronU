@@ -26,4 +26,20 @@ object Instructions {
   def OR      = BitPat("b00000000000101010???????????????")
   def XOR     = BitPat("b00000000000101011???????????????")
   def NOR     = BitPat("b00000000000101000???????????????")
+
+  private def Cat(seq: Seq[BigInt]) = {
+    var ret = BigInt(0)
+    for (i <- seq){
+      ret <<= 5
+      ret |= i
+    }
+    ret
+  }
+
+  def twoRegT(bitPat: BitPat, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(rj, rd))
+  def threeRegT(bitPat: BitPat, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(rk, rj, rd))
+  def fourRegT(bitPat: BitPat, ra: BigInt, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(ra, rk, rj, rd))
+  def twoRegImmT(bitPat: BitPat, imm: BigInt, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(imm, rj, rd))
+  def oneRegImmT(bitPat: BitPat, immh: BigInt, rj: BigInt, imml: BigInt): BigInt = bitPat.value | Cat(Seq(immh, rj, imml))
+  def immT(bitPat: BitPat, imm: BigInt): BigInt = bitPat.value | imm
 }

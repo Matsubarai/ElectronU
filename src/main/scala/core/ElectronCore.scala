@@ -38,14 +38,14 @@ class ElectronCore extends Module {
   if_id_sigs.bits.pc := fetch.io.pc.bits
 
   //ID
-  val if_id = RegEnable(if_id_sigs, !ld_stall)
+  val if_id_instr = RegEnable(if_id_sigs, !ld_stall)
 
   val decode = Module(new Decode)
-  decode.io.instr := if_id.bits.instr
+  decode.io.instr := if_id_instr.bits.instr
 
   val rf = Module(new GR)
-  rf.io.raddr1.valid := if_id.valid
-  rf.io.raddr2.valid := if_id.valid
+  rf.io.raddr1.valid := if_id_instr.valid
+  rf.io.raddr2.valid := if_id_instr.valid
   rf.io.raddr1.bits := decode.io.ctrl.rj
   rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.branch, decode.io.ctrl.rd, decode.io.ctrl.rk)
   val rf_rdata1 = Wire(UInt(32.W))
@@ -55,12 +55,12 @@ class ElectronCore extends Module {
   val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
   val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
 
-  fetch.io.offs.valid := if_id.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
+  fetch.io.offs.valid := if_id_instr.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
   fetch.io.offs.bits := Mux(decode.io.ctrl.bl, offs26, offs16)
-  fetch.io.base.valid := if_id.valid && decode.io.ctrl.jirl
+  fetch.io.base.valid := if_id_instr.valid && decode.io.ctrl.jirl
   fetch.io.base.bits := rf_rdata1
 
-  br_taken_flush := if_id.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
+  br_taken_flush := if_id_instr.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
 
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()
@@ -86,13 +86,13 @@ class ElectronCore extends Module {
   id_exe_sigs.rf_rdata2 := rf_rdata2
   id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch)
   id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
-  id_exe_sigs.pc := if_id.bits.pc
+  id_exe_sigs.pc := if_id_instr.bits.pc
   id_exe_sigs.link := decode.io.ctrl.bl || decode.io.ctrl.jirl
 
   //EXE
-  val id_exe = Pipe(if_id.valid && !ld_stall, id_exe_sigs)
+  val id_exe = Pipe(if_id_instr.valid && !ld_stall, id_exe_sigs)
 
-  ld_stall := if_id.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
+  ld_stall := if_id_instr.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
     (id_exe.bits.rf_waddr === rf.io.raddr1.bits || id_exe.bits.rf_waddr === rf.io.raddr2.bits)
 
   val alu = Module(new ALU)
@@ -144,6 +144,12 @@ class ElectronCore extends Module {
   rf.io.waddr.valid := mem_wb.valid && mem_wb.bits.rf_wen
   rf.io.waddr.bits := mem_wb.bits.rf_waddr
   rf.io.wdata := mem_wb.bits.rf_wdata
+
+  printf("----------\n")
+  when(rf.io.waddr.valid) {
+    printf(p"wreg:  0x${Hexadecimal(rf.io.waddr.bits)}\n")
+    printf(p"wdata: 0x${Hexadecimal(rf.io.wdata)}\n")
+  }
 
   //Forwarding
   def isForward(wen: Bool, waddr: UInt, raddr: UInt) = wen && waddr === raddr && waddr =/= 0.U
