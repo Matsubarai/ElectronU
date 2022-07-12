@@ -1,6 +1,7 @@
 package core
 
 import chisel3._
+import chisel3.util._
 import Instructions._
 import ALU._
 
@@ -9,7 +10,7 @@ class CtrlSignals extends Bundle{
   val rj = UInt(5.W)
   val rk = UInt(5.W)
   val rd = UInt(5.W)
-  val sel_src2 = Bool()
+  val sel_src2 = UInt(2.W)
   val mem2reg = Bool()
   val reg2mem = Bool()
   val branch = Bool()
@@ -40,11 +41,11 @@ class Decode extends Module {
     io.ctrl.alu_ctrl := ALU_SLT
   }.elsewhen(io.instr === SLTU){
     io.ctrl.alu_ctrl := ALU_SLTU
-  }.elsewhen(io.instr === SLL_W){
+  }.elsewhen(io.instr === SLL_W || io.instr === SLLI_W){
     io.ctrl.alu_ctrl := ALU_SLL
-  }.elsewhen(io.instr === SRL_W){
+  }.elsewhen(io.instr === SRL_W || io.instr === SRLI_W){
     io.ctrl.alu_ctrl := ALU_SRL
-  }.elsewhen(io.instr === SRA_W){
+  }.elsewhen(io.instr === SRA_W || io.instr === SRAI_W){
     io.ctrl.alu_ctrl := ALU_SRA
   }.elsewhen(io.instr === AND){
     io.ctrl.alu_ctrl := ALU_AND
@@ -56,7 +57,8 @@ class Decode extends Module {
     io.ctrl.alu_ctrl := ALU_NOR
   }
 
-  io.ctrl.sel_src2 := io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W
+  io.ctrl.sel_src2 := Cat(io.instr === SLLI_W || io.instr === SRLI_W || io.instr === SRAI_W,
+    io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W)
 
   io.ctrl.mem2reg := io.instr === LD_W
 

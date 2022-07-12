@@ -59,7 +59,7 @@ class ElectronCore extends Module {
 
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()
-    val sel_src2 = Bool()
+    val sel_src2 = UInt()
     val reg2mem = Bool()
     val mem2reg = Bool()
     val lui = Bool()
@@ -89,8 +89,9 @@ class ElectronCore extends Module {
   val alu = Module(new ALU)
   alu.io.ctrl := id_exe.bits.alu_ctrl
   val si12 = Cat(Fill(20, id_exe.bits.imm26(21)), id_exe.bits.imm26(21,10))
+  val ui5 = Cat(Fill(27, si12(4)), si12(4, 0))
   alu.io.src1 := id_exe.bits.rf_rdata1
-  alu.io.src2 := Mux(id_exe.bits.sel_src2, si12, id_exe.bits.rf_rdata2)
+  alu.io.src2 := Mux(id_exe.bits.sel_src2(0), si12, Mux(id_exe.bits.sel_src2(1), ui5, id_exe.bits.rf_rdata2))
 
   val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
   val alu_result = Mux(id_exe.bits.lui, si20, alu.io.result)
