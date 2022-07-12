@@ -7,6 +7,8 @@ import chisel3.util._
 class ElectronCore extends Module {
   val io = IO(new Bundle() {
     val pc = Output(UInt(32.W))
+    val imem = Flipped(new MemPort)
+    val dmem = Flipped(new MemPort)
   })
 
   //IF
@@ -18,29 +20,32 @@ class ElectronCore extends Module {
   i_addr_trans.io.vaddr := fetch.io.npc //pre-IF
   io.pc := fetch.io.pc
 
-  val iram = Module(new SinglePortSyncRAM)
-  iram.io.en := 1.B
-  iram.io.addr := i_addr_trans.io.paddr(15,2) //pre-IF
-  iram.io.wen := 0.B
-  iram.io.wdata := DontCare
+  io.imem.en := 1.B
+  io.imem.addr := i_addr_trans.io.paddr(15,2) //pre-IF
+  io.imem.wen := 0.B
+  io.imem.wdata := DontCare
 
   val br_taken_flush = Wire(Bool())
-  val instr = Wire(new Bundle {
+  val if_id_sigs = Wire(new Bundle {
     val valid = Bool()
-    val bits = UInt()
+    val bits = new Bundle() {
+      val instr = UInt()
+      val pc = UInt()
+    }
   })
-  instr.valid := !br_taken_flush
-  instr.bits := iram.io.rdata
+  if_id_sigs.valid := !br_taken_flush
+  if_id_sigs.bits.instr := io.imem.rdata
+  if_id_sigs.bits.pc := fetch.io.pc
 
   //ID
-  val if_id_instr = RegEnable(instr, !ld_stall)
+  val if_id = RegEnable(if_id_sigs, !ld_stall)
 
   val decode = Module(new Decode)
-  decode.io.instr := if_id_instr.bits
+  decode.io.instr := if_id.bits.instr
 
   val rf = Module(new GR)
-  rf.io.raddr1.valid := if_id_instr.valid
-  rf.io.raddr2.valid := if_id_instr.valid
+  rf.io.raddr1.valid := if_id.valid
+  rf.io.raddr2.valid := if_id.valid
   rf.io.raddr1.bits := decode.io.ctrl.rj
   rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.branch, decode.io.ctrl.rd, decode.io.ctrl.rk)
   val rf_rdata1 = Wire(UInt(32.W))
@@ -50,12 +55,12 @@ class ElectronCore extends Module {
   val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
   val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
 
-  fetch.io.offs.valid := if_id_instr.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
+  fetch.io.offs.valid := if_id.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
   fetch.io.offs.bits := Mux(decode.io.ctrl.bl, offs26, offs16)
-  fetch.io.base.valid := if_id_instr.valid && decode.io.ctrl.jirl
+  fetch.io.base.valid := if_id.valid && decode.io.ctrl.jirl
   fetch.io.base.bits := rf_rdata1
 
-  br_taken_flush := if_id_instr.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
+  br_taken_flush := if_id.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
 
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()
@@ -68,6 +73,8 @@ class ElectronCore extends Module {
     val rf_rdata2 = UInt()
     val rf_wen = Bool()
     val rf_waddr = UInt()
+    val pc = UInt()
+    val link = Bool()
   })
   id_exe_sigs.alu_ctrl := decode.io.ctrl.alu_ctrl
   id_exe_sigs.sel_src2 := decode.io.ctrl.sel_src2
@@ -79,11 +86,13 @@ class ElectronCore extends Module {
   id_exe_sigs.rf_rdata2 := rf_rdata2
   id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch)
   id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
+  id_exe_sigs.pc := if_id.bits.pc
+  id_exe_sigs.link := decode.io.ctrl.bl || decode.io.ctrl.jirl
 
   //EXE
-  val id_exe = Pipe(if_id_instr.valid && !ld_stall, id_exe_sigs)
+  val id_exe = Pipe(if_id.valid && !ld_stall, id_exe_sigs)
 
-  ld_stall := if_id_instr.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
+  ld_stall := if_id.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
     (id_exe.bits.rf_waddr === rf.io.raddr1.bits || id_exe.bits.rf_waddr === rf.io.raddr2.bits)
 
   val alu = Module(new ALU)
@@ -94,7 +103,7 @@ class ElectronCore extends Module {
   alu.io.src2 := Mux(id_exe.bits.sel_src2(0), si12, Mux(id_exe.bits.sel_src2(1), ui5, id_exe.bits.rf_rdata2))
 
   val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
-  val alu_result = Mux(id_exe.bits.lui, si20, alu.io.result)
+  val alu_result = Mux(id_exe.bits.link, id_exe.bits.pc + 4, Mux(id_exe.bits.lui, si20, alu.io.result))
 
   val exe_mem_sigs = Wire(new Bundle{
     val alu_result = UInt()
@@ -113,13 +122,12 @@ class ElectronCore extends Module {
   val d_addr_trans = Module(new AddrTrans)
   d_addr_trans.io.vaddr := alu_result // pre-MEM
 
-  val dram = Module(new SinglePortSyncRAM)
-  dram.io.en := id_exe.valid && (id_exe.bits.mem2reg || id_exe.bits.reg2mem) //pre-MEM
-  dram.io.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
-  dram.io.wen := id_exe.valid && id_exe.bits.reg2mem //pre-MEM
-  dram.io.wdata := id_exe.bits.rf_rdata2 //pre-MEM
+  io.dmem.en := id_exe.valid && (id_exe.bits.mem2reg || id_exe.bits.reg2mem) //pre-MEM
+  io.dmem.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
+  io.dmem.wen := id_exe.valid && id_exe.bits.reg2mem //pre-MEM
+  io.dmem.wdata := id_exe.bits.rf_rdata2 //pre-MEM
 
-  val rf_wdata = Mux(exe_mem.bits.mem2reg, dram.io.rdata, exe_mem.bits.alu_result)
+  val rf_wdata = Mux(exe_mem.bits.mem2reg, io.dmem.rdata, exe_mem.bits.alu_result)
 
   val mem_wb_sigs = Wire(new Bundle{
     val rf_wen = Bool()
@@ -163,6 +171,6 @@ class ElectronCore extends Module {
   ))
 }
 
-object Generator extends App{
+object coreGenerator extends App{
   (new ChiselStage).emitVerilog(new ElectronCore, args)
 }
