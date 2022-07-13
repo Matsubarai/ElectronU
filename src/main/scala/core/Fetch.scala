@@ -14,7 +14,7 @@ class Fetch extends Module{
 
   val npc = Wire(UInt(32.W))
 
-  val pc = RegEnable(npc, 0x1bffffff.U(32.W), !io.stall)
+  val pc = RegEnable(npc, 0x1bfffffc.U(32.W), !io.stall)
   val valid = RegInit(0.B)
   valid := 1.B
 

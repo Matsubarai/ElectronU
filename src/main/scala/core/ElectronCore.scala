@@ -6,11 +6,11 @@ import chisel3.util._
 
 class ElectronCore extends Module {
   val io = IO(new Bundle() {
-    val pc = Output(UInt(32.W))
+    val pc = Valid(UInt(32.W))
     val imem = Flipped(new MemPort)
     val dmem = Flipped(new MemPort)
   })
-
+  printf("----------\n")
   //IF
   val ld_stall = Wire(Bool())
   val fetch = Module(new Fetch)
@@ -18,7 +18,10 @@ class ElectronCore extends Module {
 
   val i_addr_trans = Module(new AddrTrans)
   i_addr_trans.io.vaddr := fetch.io.npc //pre-IF
-  io.pc := fetch.io.pc.bits
+  io.pc <> fetch.io.pc
+
+  printf(p"pre-IF_IF: ${io.pc.valid}\n")
+  printf(p"pc:    0x${Hexadecimal(io.pc.bits)}\n")
 
   io.imem.en := 1.B
   io.imem.addr := i_addr_trans.io.paddr(15,2) //pre-IF
@@ -39,6 +42,10 @@ class ElectronCore extends Module {
 
   //ID
   val if_id = RegEnable(if_id_sigs, !ld_stall)
+
+  printf(p"IF_ID: ${if_id.valid}\n")
+  printf(p"pc:    0x${Hexadecimal(if_id.bits.pc)}\n")
+  printf(p"instr: 0x${Hexadecimal(if_id.bits.instr)}\n")
 
   val decode = Module(new Decode)
   decode.io.instr := if_id.bits.instr
@@ -92,6 +99,8 @@ class ElectronCore extends Module {
   //EXE
   val id_exe = Pipe(if_id.valid && !ld_stall, id_exe_sigs)
 
+  printf(p"ID_EXE: ${id_exe.valid}\n")
+
   ld_stall := if_id.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
     (id_exe.bits.rf_waddr === rf.io.raddr1.bits || id_exe.bits.rf_waddr === rf.io.raddr2.bits)
 
@@ -119,6 +128,8 @@ class ElectronCore extends Module {
   //MEM
   val exe_mem = Pipe(id_exe.valid, exe_mem_sigs)
 
+  printf(p"EXE_MEM: ${exe_mem.valid}\n")
+
   val d_addr_trans = Module(new AddrTrans)
   d_addr_trans.io.vaddr := alu_result // pre-MEM
 
@@ -141,13 +152,15 @@ class ElectronCore extends Module {
   //WB
   val mem_wb = Pipe(exe_mem.valid, mem_wb_sigs)
 
+  printf(p"MEM_WB: ${mem_wb.valid}\n")
+
   rf.io.waddr.valid := mem_wb.valid && mem_wb.bits.rf_wen
   rf.io.waddr.bits := mem_wb.bits.rf_waddr
   rf.io.wdata := mem_wb.bits.rf_wdata
 
-  printf("----------\n")
   when(rf.io.waddr.valid) {
-    printf(p"wreg:  0x${Hexadecimal(rf.io.waddr.bits)}\n")
+    printf("--\n")
+    printf(p"wreg:  r${Hexadecimal(rf.io.waddr.bits)}\n")
     printf(p"wdata: 0x${Hexadecimal(rf.io.wdata)}\n")
   }
 

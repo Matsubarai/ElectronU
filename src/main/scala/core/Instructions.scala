@@ -36,10 +36,12 @@ object Instructions {
     ret
   }
 
-  def twoRegT(bitPat: BitPat, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(rj, rd))
-  def threeRegT(bitPat: BitPat, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(rk, rj, rd))
-  def fourRegT(bitPat: BitPat, ra: BigInt, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(ra, rk, rj, rd))
-  def twoRegImmT(bitPat: BitPat, imm: BigInt, rj: BigInt, rd: BigInt): BigInt = bitPat.value | Cat(Seq(imm, rj, rd))
-  def oneRegImmT(bitPat: BitPat, immh: BigInt, rj: BigInt, imml: BigInt): BigInt = bitPat.value | Cat(Seq(immh, rj, imml))
-  def immT(bitPat: BitPat, imm: BigInt): BigInt = bitPat.value | imm
+  def instrT(bitPat: BitPat, seq: Seq[BigInt]): BigInt = ~bitPat.mask & Cat(seq) | bitPat.value
+
+  def twoRegT(bitPat: BitPat, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(rj, rd))
+  def threeRegT(bitPat: BitPat, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(rk, rj, rd))
+  def fourRegT(bitPat: BitPat, ra: BigInt, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(ra, rk, rj, rd))
+  def twoRegImmT(bitPat: BitPat, imm: BigInt, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(imm, rj, rd))
+  def oneRegImmT(bitPat: BitPat, immh: BigInt, rj: BigInt, imml: BigInt): BigInt = instrT(bitPat, Seq(immh, rj, imml))
+  def immT(bitPat: BitPat, imm: BigInt): BigInt = instrT(bitPat, Seq(imm))
 }
