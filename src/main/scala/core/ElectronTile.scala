@@ -1,11 +1,12 @@
 package core
 
 import chisel3._
+import chisel3.util._
 import chisel3.stage.ChiselStage
 
 class ElectronTile extends Module{
   val io = IO(new Bundle() {
-    val pc = Output(UInt(32.W))
+    val pc = Valid(UInt(32.W))
   })
 
   val imem = Module(new SinglePortSyncRAM)
@@ -14,7 +15,7 @@ class ElectronTile extends Module{
 
   core.io.dmem <> dmem.io
   core.io.imem <> imem.io
-  io.pc := core.io.pc
+  io.pc <> core.io.pc
 }
 
 object tileGenerator extends App{

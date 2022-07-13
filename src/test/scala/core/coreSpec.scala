@@ -8,7 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import core.Instructions._
 
 class coreSpec extends AnyFreeSpec with ChiselScalatestTester with Matchers{
-  "WAR test" in {
+  "RAW test" in {
     test(new ElectronCore()){ c =>
       val instr_seq = Seq(
         twoRegImmT(ADDI_W, 1, 0, 2),
@@ -35,17 +35,15 @@ class coreSpec extends AnyFreeSpec with ChiselScalatestTester with Matchers{
       val instr_seq = Seq(
         twoRegImmT(LD_W, 0, 0, 2),
         twoRegImmT(LD_W, 4, 0, 3),
-        ADDI_W.value, // nop
         threeRegT(ADD_W, 2, 3, 2),
         threeRegT(ADD_W, 4, 2, 4)
       )
 
       c.io.dmem.rdata.poke(1)
-      for (_ <- 0 until 5){
-        for (i <- instr_seq) {
-          c.clock.step(1)
-          c.io.imem.rdata.poke(i)
-        }
+      for (_ <- 0 until 25){
+        val x = c.io.imem.addr.peekInt().toInt
+        c.clock.step(1)
+        c.io.imem.rdata.poke(instr_seq(x % instr_seq.length))
       }
 
       c.clock.step(1)

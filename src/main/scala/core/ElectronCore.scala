@@ -17,7 +17,7 @@ class ElectronCore extends Module {
   fetch.io.stall := ld_stall
 
   val i_addr_trans = Module(new AddrTrans)
-  i_addr_trans.io.vaddr := fetch.io.npc //pre-IF
+  i_addr_trans.io.vaddr := Mux(ld_stall, fetch.io.pc.bits, fetch.io.npc) //pre-IF
   io.pc <> fetch.io.pc
 
   printf(p"pre-IF_IF: ${io.pc.valid}\n")
