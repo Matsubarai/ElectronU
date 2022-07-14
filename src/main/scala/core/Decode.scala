@@ -10,7 +10,7 @@ class CtrlSignals extends Bundle{
   val rj = UInt(5.W)
   val rk = UInt(5.W)
   val rd = UInt(5.W)
-  val sel_src2 = UInt(2.W)
+  val sel_src2 = UInt(3.W)
   val mem2reg = Bool()
   val reg2mem = Bool()
   val branch = Bool()
@@ -37,9 +37,9 @@ class Decode extends Module {
     io.ctrl.alu_ctrl := ALU_ADD
   }.elsewhen(io.instr === SUB_W){
     io.ctrl.alu_ctrl := ALU_SUB
-  }.elsewhen(io.instr === SLT){
+  }.elsewhen(io.instr === SLT || io.instr === SLTI){
     io.ctrl.alu_ctrl := ALU_SLT
-  }.elsewhen(io.instr === SLTU){
+  }.elsewhen(io.instr === SLTU || io.instr === SLTUI){
     io.ctrl.alu_ctrl := ALU_SLTU
   }.elsewhen(io.instr === SLL_W || io.instr === SLLI_W){
     io.ctrl.alu_ctrl := ALU_SLL
@@ -58,7 +58,8 @@ class Decode extends Module {
   }
 
   io.ctrl.sel_src2 := Cat(io.instr === SLLI_W || io.instr === SRLI_W || io.instr === SRAI_W,
-    io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W)
+    io.instr === ANDI || io.instr === ORI || io.instr === XORI,
+    io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W || io.instr === SLTI || io.instr === SLTUI)
 
   io.ctrl.mem2reg := io.instr === LD_W
 
