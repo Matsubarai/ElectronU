@@ -28,7 +28,7 @@ class ElectronCore extends Module {
   io.imem.wen := 0.B
   io.imem.wdata := DontCare
 
-  val br_taken_flush = Wire(Bool())
+  val jump_flush = Wire(Bool())
   val if_id_sigs = Wire(new Bundle {
     val valid = Bool()
     val bits = new Bundle() {
@@ -36,7 +36,7 @@ class ElectronCore extends Module {
       val pc = UInt()
     }
   })
-  if_id_sigs.valid := fetch.io.pc.valid && !br_taken_flush
+  if_id_sigs.valid := fetch.io.pc.valid && !jump_flush
   if_id_sigs.bits.instr := io.imem.rdata
   if_id_sigs.bits.pc := fetch.io.pc.bits
 
@@ -59,16 +59,16 @@ class ElectronCore extends Module {
   val rf_rdata2 = Wire(UInt(32.W))
 
   val br_taken = decode.io.ctrl.branch && !ld_stall && ((rf_rdata1 === rf_rdata2) ^ decode.io.ctrl.bne)
-  val jump = decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl && !ld_stall
+  val jump = decode.io.ctrl.b || decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl
   val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
   val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
 
-  fetch.io.offs.valid := if_id.valid && jump
-  fetch.io.offs.bits := Mux(decode.io.ctrl.bl, offs26, offs16)
-  fetch.io.base.valid := if_id.valid && jump
-  fetch.io.base.bits := Mux(decode.io.ctrl.jirl, rf_rdata1, if_id.bits.pc)
+  jump_flush := if_id.valid && jump
 
-  br_taken_flush := if_id.valid && (decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl)
+  fetch.io.offs.valid := jump_flush
+  fetch.io.offs.bits := Mux(decode.io.ctrl.bl || decode.io.ctrl.b, offs26, offs16)
+  fetch.io.base.valid := jump_flush
+  fetch.io.base.bits := Mux(decode.io.ctrl.jirl, rf_rdata1, if_id.bits.pc)
 
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()

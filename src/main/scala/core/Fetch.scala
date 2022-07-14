@@ -15,8 +15,7 @@ class Fetch extends Module{
   val npc = Wire(UInt(32.W))
 
   val pc = RegEnable(npc, 0x1bfffffc.U(32.W), !io.stall)
-  val valid = RegInit(0.B)
-  valid := 1.B
+  val valid = RegEnable(1.B, 0.B, !io.stall)
 
   npc := Mux(io.base.valid, io.base.bits, pc) + Mux(io.offs.valid, io.offs.bits, 4.U)
 

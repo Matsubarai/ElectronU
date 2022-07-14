@@ -15,6 +15,7 @@ class CtrlSignals extends Bundle{
   val reg2mem = Bool()
   val branch = Bool()
   val bne = Bool()
+  val b = Bool()
   val bl = Bool()
   val jirl = Bool()
   val lui = Bool()
@@ -68,6 +69,8 @@ class Decode extends Module {
   io.ctrl.branch := io.instr === BEQ || io.instr === BNE
 
   io.ctrl.bne := io.instr === BNE
+
+  io.ctrl.b := io.instr === B
 
   io.ctrl.bl := io.instr === BL
 
