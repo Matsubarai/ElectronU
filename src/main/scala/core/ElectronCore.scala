@@ -72,30 +72,30 @@ class ElectronCore extends Module {
 
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()
-    val muldiv_ctrl = UInt()
-    val sel_src1 = UInt()
     val sel_src2 = UInt()
     val reg2mem = Bool()
     val mem2reg = Bool()
+    val lui = Bool()
     val imm26 = UInt()
     val rf_rdata1 = UInt()
     val rf_rdata2 = UInt()
     val rf_wen = Bool()
     val rf_waddr = UInt()
     val pc = UInt()
+    val link = Bool()
   })
   id_exe_sigs.alu_ctrl := decode.io.ctrl.alu_ctrl
-  id_exe_sigs.muldiv_ctrl := decode.io.ctrl.muldiv_ctrl
-  id_exe_sigs.sel_src1 := Cat(decode.io.ctrl.sel_src(4, 3), !decode.io.ctrl.sel_src(4, 3).orR)
-  id_exe_sigs.sel_src2 := Cat(decode.io.ctrl.sel_src, !decode.io.ctrl.sel_src.orR)
+  id_exe_sigs.sel_src2 := decode.io.ctrl.sel_src2
   id_exe_sigs.reg2mem := decode.io.ctrl.reg2mem
   id_exe_sigs.mem2reg := decode.io.ctrl.mem2reg
+  id_exe_sigs.lui := decode.io.ctrl.lui
   id_exe_sigs.imm26 := decode.io.ctrl.imm26
   id_exe_sigs.rf_rdata1 := rf_rdata1
   id_exe_sigs.rf_rdata2 := rf_rdata2
   id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch)
   id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
   id_exe_sigs.pc := if_id.bits.pc
+  id_exe_sigs.link := decode.io.ctrl.bl || decode.io.ctrl.jirl
 
   //EXE
   val id_exe = Pipe(if_id.valid && !ld_stall, id_exe_sigs)
@@ -108,18 +108,15 @@ class ElectronCore extends Module {
   val alu = Module(new ALU)
   alu.io.ctrl := id_exe.bits.alu_ctrl
   val si12 = Cat(Fill(20, id_exe.bits.imm26(21)), id_exe.bits.imm26(21,10))
-  val ui12 = id_exe.bits.imm26(21,10)
-  val ui5 = id_exe.bits.imm26(14,10)
-  val si20 = id_exe.bits.imm26(24, 5)
-  alu.io.src1 := Mux1H(id_exe.bits.sel_src1, Seq(id_exe.bits.rf_rdata1, id_exe.bits.pc, si20))
-  alu.io.src2 := Mux1H(id_exe.bits.sel_src2, Seq(id_exe.bits.rf_rdata2, si12, ui12, ui5, 4.U(32.W), 12.U(32.W)))
+  val ui12 = Cat(0.U(20.W), id_exe.bits.imm26(21,10))
+  val ui5 = Cat(0.U(27.W), id_exe.bits.imm26(14,10))
+  alu.io.src1 := id_exe.bits.rf_rdata1
+  alu.io.src2 := Mux(id_exe.bits.sel_src2(0), si12,
+    Mux(id_exe.bits.sel_src2(1), ui12,
+    Mux(id_exe.bits.sel_src2(2), ui5, id_exe.bits.rf_rdata2)))
 
-  val muldiv = Module(new MulDiv)
-  muldiv.io.ctrl := id_exe.bits.muldiv_ctrl
-  muldiv.io.src1 := id_exe.bits.rf_rdata1
-  muldiv.io.src2 := id_exe.bits.rf_rdata2
-
-  val alu_result = Mux(id_exe.bits.muldiv_ctrl.orR, muldiv.io.result, alu.io.result)
+  val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
+  val alu_result = Mux(id_exe.bits.link, id_exe.bits.pc + 4.U, Mux(id_exe.bits.lui, si20, alu.io.result))
 
   val exe_mem_sigs = Wire(new Bundle{
     val alu_result = UInt()
