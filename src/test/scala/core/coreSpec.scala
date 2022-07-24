@@ -58,4 +58,25 @@ class coreSpec extends AnyFreeSpec with ChiselScalatestTester with Matchers{
       c.clock.step(5)
     }
   }
+  "DIV MOD test" in {
+    test(new ElectronCore()){ c =>
+      val instr_seq = Seq(
+        twoRegImmT(ADDI_W, -4, 0, 1),
+        twoRegImmT(ADDI_W, 2, 0, 2),
+        threeRegT(DIV_W, 2, 1, 3),
+        threeRegT(MOD_W, 2, 1, 4)
+      )
+
+      for (_ <- 0 until 5){
+        for (i <- instr_seq) {
+          c.clock.step(1)
+          c.io.imem.rdata.poke(i.U)
+        }
+      }
+
+      c.clock.step(1)
+      c.io.imem.rdata.poke(ADDI_W.value)
+      c.clock.step(5)
+    }
+  }
 }

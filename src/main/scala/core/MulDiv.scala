@@ -30,5 +30,5 @@ class MulDiv extends Module {
 
   val mul_result = src1 * src2
 
-  io.result := Mux1H(UIntToOH(io.ctrl(2, 1), 4), Seq(mul_result(31, 0), mul_result(63, 32), (src1 / src2).asUInt, (src1 % src2).asUInt))
+  io.result := Mux1H(UIntToOH(io.ctrl(2, 1), 4), Seq(mul_result(31, 0), mul_result(63, 32), (src1 % src2).asUInt, (src1 / src2).asUInt))
 }

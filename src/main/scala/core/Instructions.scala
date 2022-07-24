@@ -40,16 +40,20 @@ object Instructions {
   def XORI    = BitPat("b0000001111??????????????????????")
   def NOR     = BitPat("b00000000000101000???????????????")
 
-  private def Cat(seq: Seq[BigInt]) = {
-    var ret = BigInt(0)
-    for (i <- seq){
+  private def Cat(seq: Seq[BigInt]): BigInt = {
+    var ret: BigInt = 0
+    var mask: BigInt = (BigInt(1) << 32) - 1
+    for (i <- seq) {
       ret <<= 5
-      ret |= i
+      ret |= (i & mask)
+      if (mask != (1 << 5) - 1){
+        mask = (1 << 5) - 1
+      }
     }
     ret
   }
 
-  def instrT(bitPat: BitPat, seq: Seq[BigInt]): BigInt = ~bitPat.mask & Cat(seq) | bitPat.value
+  def instrT(bitPat: BitPat, seq: Seq[BigInt]): BigInt = ~bitPat.mask & (BigInt(1) << 32) - 1 & Cat(seq) | bitPat.value
 
   def twoRegT(bitPat: BitPat, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(rj, rd))
   def threeRegT(bitPat: BitPat, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(rk, rj, rd))

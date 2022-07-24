@@ -123,7 +123,7 @@ class ElectronCore extends Module {
   muldiv.io.src2 := alu.io.src2
 
   val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
-  val alu_result = Mux(decode.io.ctrl.muldiv_ctrl.orR, muldiv.io.result,
+  val alu_result = Mux(id_exe.bits.muldiv_ctrl.orR, muldiv.io.result,
     Mux(id_exe.bits.link, id_exe.bits.pc + 4.U, Mux(id_exe.bits.lui, si20, alu.io.result)))
 
   val exe_mem_sigs = Wire(new Bundle{
