@@ -35,14 +35,15 @@ class coreSpec extends AnyFreeSpec with ChiselScalatestTester with Matchers{
       val instr_seq = Seq(
         twoRegImmT(LD_W, 0, 0, 2),
         twoRegImmT(LD_W, 4, 0, 3),
-        immT(B, 2),
+//        immT(B, 2),
 //        immT(BL, 2),
 //        twoRegImmT(JIRL, 3, 3, 5),
-//        twoRegImmT(BNE, 2, 2, 3),
+//        twoRegImmT(BGE, 2, 2, 3),
+//        twoRegImmT(BGEU, 2, 2, 3),
         threeRegT(ADD_W, 2, 3, 2),
         threeRegT(ADD_W, 4, 2, 4)
       )
-      val data_seq = Seq(2, 4)
+      val data_seq = Seq((BigInt(1) << 32) -2, BigInt(3))
 
       for (_ <- 0 until 25){
         val x = c.io.imem.addr.peekInt().toInt
@@ -50,7 +51,7 @@ class coreSpec extends AnyFreeSpec with ChiselScalatestTester with Matchers{
         val en = c.io.dmem.en.peekBoolean()
         c.clock.step(1)
         if(en)
-          c.io.dmem.rdata.poke(data_seq(y))
+          c.io.dmem.rdata.poke(data_seq(y).U)
         c.io.imem.rdata.poke(instr_seq(x % instr_seq.length))
       }
 

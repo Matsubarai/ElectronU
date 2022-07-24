@@ -54,11 +54,15 @@ class ElectronCore extends Module {
   rf.io.raddr1.valid := if_id.valid
   rf.io.raddr2.valid := if_id.valid
   rf.io.raddr1.bits := decode.io.ctrl.rj
-  rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.branch, decode.io.ctrl.rd, decode.io.ctrl.rk)
+  rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.br_comp_ctrl.orR, decode.io.ctrl.rd, decode.io.ctrl.rk)
   val rf_rdata1 = Wire(UInt(32.W))
   val rf_rdata2 = Wire(UInt(32.W))
 
-  val br_taken = decode.io.ctrl.branch && !ld_stall && ((rf_rdata1 === rf_rdata2) ^ decode.io.ctrl.bne)
+  val br_comp = Module(new BranchCompare)
+  br_comp.io.ctrl := decode.io.ctrl.br_comp_ctrl
+  br_comp.io.src1 := rf_rdata1
+  br_comp.io.src2 := rf_rdata2
+  val br_taken = decode.io.ctrl.br_comp_ctrl.orR && !ld_stall && br_comp.io.result
   val jump = decode.io.ctrl.b || decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl
   val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
   val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
@@ -93,7 +97,7 @@ class ElectronCore extends Module {
   id_exe_sigs.imm26 := decode.io.ctrl.imm26
   id_exe_sigs.rf_rdata1 := rf_rdata1
   id_exe_sigs.rf_rdata2 := rf_rdata2
-  id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.branch || decode.io.ctrl.b)
+  id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.br_comp_ctrl.orR || decode.io.ctrl.b)
   id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bl, 1.U(5.W), decode.io.ctrl.rd)
   id_exe_sigs.pc := if_id.bits.pc
 

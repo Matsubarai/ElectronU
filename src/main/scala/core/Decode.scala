@@ -5,6 +5,7 @@ import chisel3.util._
 import Instructions._
 import ALU._
 import MulDiv._
+import BranchCompare._
 
 class CtrlSignals extends Bundle{
   val alu_ctrl = UInt(SZ_ALU_CTRL.W)
@@ -15,8 +16,7 @@ class CtrlSignals extends Bundle{
   val sel_src = UInt(5.W)
   val mem2reg = Bool()
   val reg2mem = Bool()
-  val branch = Bool()
-  val bne = Bool()
+  val br_comp_ctrl = UInt(SZ_B_CTRL.W)
   val b = Bool()
   val bl = Bool()
   val jirl = Bool()
@@ -73,9 +73,10 @@ class Decode extends Module {
 
   io.ctrl.reg2mem := io.instr === ST_W
 
-  io.ctrl.branch := io.instr === BEQ || io.instr === BNE
-
-  io.ctrl.bne := io.instr === BNE
+  io.ctrl.br_comp_ctrl := Cat(io.instr === BNE || io.instr === BGE || io.instr === BGEU,
+    io.instr === BLT || io.instr === BGE || io.instr === BLTU || io.instr === BGEU,
+    io.instr === BEQ || io.instr === BNE || io.instr === BLT || io.instr === BGE
+  )
 
   io.ctrl.b := io.instr === B
 
