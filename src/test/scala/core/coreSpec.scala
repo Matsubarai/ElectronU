@@ -35,6 +35,7 @@ class coreSpec extends AnyFreeSpec with ChiselScalatestTester with Matchers{
       val instr_seq = Seq(
         twoRegImmT(LD_W, 0, 0, 2),
         twoRegImmT(LD_W, 4, 0, 3),
+        immT(B, 2),
 //        immT(BL, 2),
 //        twoRegImmT(JIRL, 3, 3, 5),
 //        twoRegImmT(BNE, 2, 2, 3),
