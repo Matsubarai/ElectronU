@@ -7,6 +7,7 @@ import ALU._
 
 class CtrlSignals extends Bundle{
   val alu_ctrl = UInt(SZ_ALU_CTRL.W)
+  val muldiv_ctrl = UInt(3.W)
   val rj = UInt(5.W)
   val rk = UInt(5.W)
   val rd = UInt(5.W)
@@ -57,6 +58,10 @@ class Decode extends Module {
   }.elsewhen(io.instr === NOR){
     io.ctrl.alu_ctrl := ALU_NOR
   }
+
+  io.ctrl.muldiv_ctrl := Cat(io.instr === DIV_W || io.instr === MOD_W || io.instr === DIV_WU || io.instr === MOD_WU,
+    io.instr === MULH_WU || io.instr === MULH_W || io.instr === DIV_W || io.instr === DIV_WU,
+    io.instr === MULH_W || io.instr === MUL_W || io.instr === DIV_W || io.instr === MOD_W)
 
   io.ctrl.sel_src2 := Cat(io.instr === SLLI_W || io.instr === SRLI_W || io.instr === SRAI_W,
     io.instr === ANDI || io.instr === ORI || io.instr === XORI,
