@@ -78,5 +78,6 @@ object Instructions {
   def fourRegT(bitPat: BitPat, ra: BigInt, rk: BigInt, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(ra, rk, rj, rd))
   def twoRegImmT(bitPat: BitPat, imm: BigInt, rj: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(imm, rj, rd))
   def oneRegImmT(bitPat: BitPat, immh: BigInt, rj: BigInt, imml: BigInt): BigInt = instrT(bitPat, Seq(immh, rj, imml))
+  def oneRegImmT(bitPat: BitPat, imm: BigInt, rd: BigInt): BigInt = instrT(bitPat, Seq(imm, rd))
   def immT(bitPat: BitPat, imm: BigInt): BigInt = instrT(bitPat, Seq(imm))
 }
