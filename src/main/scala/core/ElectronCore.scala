@@ -26,6 +26,7 @@ class ElectronCore extends Module {
   io.imem.en := 1.B
   io.imem.addr := i_addr_trans.io.paddr(15,2) //pre-IF
   io.imem.wen := 0.B
+  io.imem.mask := DontCare
   io.imem.wdata := DontCare
 
   val jump_flush = Wire(Bool())
@@ -81,6 +82,7 @@ class ElectronCore extends Module {
     val sel_src2 = UInt()
     val reg2mem = Bool()
     val mem2reg = Bool()
+    val bhw = UInt()
     val imm26 = UInt()
     val rf_rdata1 = UInt()
     val rf_rdata2 = UInt()
@@ -94,6 +96,7 @@ class ElectronCore extends Module {
   id_exe_sigs.sel_src2 := Cat(decode.io.ctrl.sel_src, !decode.io.ctrl.sel_src.orR)
   id_exe_sigs.reg2mem := decode.io.ctrl.reg2mem
   id_exe_sigs.mem2reg := decode.io.ctrl.mem2reg
+  id_exe_sigs.bhw := decode.io.ctrl.bhw
   id_exe_sigs.imm26 := decode.io.ctrl.imm26
   id_exe_sigs.rf_rdata1 := rf_rdata1
   id_exe_sigs.rf_rdata2 := rf_rdata2
@@ -125,14 +128,24 @@ class ElectronCore extends Module {
 
   val alu_result = Mux(id_exe.bits.muldiv_ctrl.orR, muldiv.io.result, alu.io.result)
 
+  printf(p"alu_src1:    0x${Hexadecimal(alu.io.src1)}\n")
+  printf(p"alu_src2:    0x${Hexadecimal(alu.io.src2)}\n")
+  printf(p"alu_result:  0x${Hexadecimal(alu.io.result)}\n")
+
+  val d_addr_trans = Module(new AddrTrans)
+
   val exe_mem_sigs = Wire(new Bundle{
     val alu_result = UInt()
     val mem2reg = Bool()
+    val bhw = UInt()
+    val offset = UInt()
     val rf_wen = Bool()
     val rf_waddr = UInt()
   })
   exe_mem_sigs.alu_result := alu_result
   exe_mem_sigs.mem2reg := id_exe.bits.mem2reg
+  exe_mem_sigs.bhw := id_exe.bits.bhw
+  exe_mem_sigs.offset := d_addr_trans.io.paddr(1, 0)
   exe_mem_sigs.rf_wen := id_exe.bits.rf_wen
   exe_mem_sigs.rf_waddr := id_exe.bits.rf_waddr
 
@@ -141,15 +154,30 @@ class ElectronCore extends Module {
 
   printf(p"EXE_MEM: ${exe_mem.valid}\n")
 
-  val d_addr_trans = Module(new AddrTrans)
   d_addr_trans.io.vaddr := alu_result // pre-MEM
 
   io.dmem.en := id_exe.valid && (id_exe.bits.mem2reg || id_exe.bits.reg2mem) //pre-MEM
   io.dmem.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
   io.dmem.wen := id_exe.valid && id_exe.bits.reg2mem //pre-MEM
-  io.dmem.wdata := id_exe.bits.rf_rdata2 //pre-MEM
+  val mask = Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
+    Seq(UIntToOH(d_addr_trans.io.paddr(1, 0)),
+      Mux(d_addr_trans.io.paddr(1), "b1100".U, "b0011".U),
+      "b1111".U)) //pre-MEM
+  io.dmem.mask := Seq(mask(3), mask(2), mask(1), mask(0)) //pre-MEM
+  io.dmem.wdata := Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
+    Seq(Fill(4, id_exe.bits.rf_rdata2(7, 0)),
+      Fill(2, id_exe.bits.rf_rdata2(15, 0)),
+      id_exe.bits.rf_rdata2)) //pre-MEM
 
-  val rf_wdata = Mux(exe_mem.bits.mem2reg, io.dmem.rdata, exe_mem.bits.alu_result)
+  val is_signed = exe_mem.bits.bhw(2)
+  val dmem_rdata_b = Mux1H(UIntToOH(exe_mem.bits.offset), Seq(io.dmem.rdata(7, 0), io.dmem.rdata(15, 8), io.dmem.rdata(23, 16), io.dmem.rdata(31, 24)))
+  val dmem_rdata_h = Mux(exe_mem.bits.offset(1), io.dmem.rdata(31, 16), io.dmem.rdata(15, 0))
+  val dmem_rdata_w = io.dmem.rdata
+  val dmem_rdata = Mux1H(UIntToOH(exe_mem.bits.bhw(1, 0)),
+    Seq(Cat(Fill(24, Mux(is_signed, dmem_rdata_b(7), 0.B)), dmem_rdata_b),
+      Cat(Fill(16, Mux(is_signed, dmem_rdata_h(15), 0.B)), dmem_rdata_h),
+      dmem_rdata_w))
+  val rf_wdata = Mux(exe_mem.bits.mem2reg, dmem_rdata, exe_mem.bits.alu_result)
 
   val mem_wb_sigs = Wire(new Bundle{
     val rf_wen = Bool()

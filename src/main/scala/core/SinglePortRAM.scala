@@ -1,10 +1,12 @@
 package core
 
 import chisel3._
+import chisel3.util._
 
 class MemPort extends Bundle {
   val en = Input(Bool())
   val wen = Input(Bool())
+  val mask = Input(Vec(4, Bool()))
   val addr = Input(UInt(14.W))
   val rdata = Output(UInt(32.W))
   val wdata = Input(UInt(32.W))
@@ -25,14 +27,19 @@ class SinglePortRAM extends Module {
 class SinglePortSyncRAM extends Module {
   val io = IO(new MemPort)
 
-  val ram = SyncReadMem(1<<14, UInt(32.W))
+  val wdata = Wire(Vec(4, UInt(8.W)))
+  val rdata = Wire(Vec(4, UInt(8.W)))
+  wdata := Seq(io.wdata(31, 24), io.wdata(23, 16), io.wdata(15, 8), io.wdata(7, 0))
+  io.rdata := Cat(rdata(3), rdata(2), rdata(1), rdata(0))
+
+  val ram = SyncReadMem(1 << 14, Vec(4, UInt(8.W)))
 
   io.rdata := DontCare
   when(io.en){
     when(io.wen){
-      ram.write(io.addr, io.wdata)
+      ram.write(io.addr, wdata, io.mask)
     }.otherwise{
-      io.rdata := ram.read(io.addr)
+      rdata := ram.read(io.addr)
     }
   }
 }

@@ -16,6 +16,7 @@ class CtrlSignals extends Bundle{
   val sel_src = UInt(5.W)
   val mem2reg = Bool()
   val reg2mem = Bool()
+  val bhw = UInt(3.W)
   val br_comp_ctrl = UInt(SZ_B_CTRL.W)
   val b = Bool()
   val bl = Bool()
@@ -35,7 +36,11 @@ class Decode extends Module {
   io.ctrl.imm26 := io.instr(25, 0)
 
   io.ctrl.alu_ctrl := DontCare
-  when(io.instr === ADD_W || io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W || io.instr === JIRL || io.instr === BL){
+  when(io.instr === ADD_W || io.instr === ADDI_W ||
+    io.instr === LD_W || io.instr === ST_W ||
+    io.instr === LD_BU || io.instr === LD_B || io.instr === ST_B ||
+    io.instr === LD_HU || io.instr === LD_H || io.instr === ST_H ||
+    io.instr === JIRL || io.instr === BL){
     io.ctrl.alu_ctrl := ALU_ADD
   }.elsewhen(io.instr === SUB_W){
     io.ctrl.alu_ctrl := ALU_SUB
@@ -67,16 +72,22 @@ class Decode extends Module {
     io.instr === JIRL || io.instr === BL,
     io.instr === SLLI_W || io.instr === SRLI_W || io.instr === SRAI_W,
     io.instr === ANDI || io.instr === ORI || io.instr === XORI,
-    io.instr === ADDI_W || io.instr === LD_W || io.instr === ST_W || io.instr === SLTI || io.instr === SLTUI)
+    io.instr === ADDI_W || io.instr === SLTI || io.instr === SLTUI ||
+      io.instr === LD_BU || io.instr === LD_B || io.instr === ST_B ||
+      io.instr === LD_HU || io.instr === LD_H || io.instr === ST_H ||
+      io.instr === LD_W || io.instr === ST_W )
 
-  io.ctrl.mem2reg := io.instr === LD_W
+  io.ctrl.mem2reg := io.instr === LD_W || io.instr === LD_B || io.instr === LD_H || io.instr === LD_BU || io.instr === LD_HU
 
-  io.ctrl.reg2mem := io.instr === ST_W
+  io.ctrl.reg2mem := io.instr === ST_W || io.instr === ST_B || io.instr === ST_H
+
+  io.ctrl.bhw := Cat(io.instr === LD_B || io.instr === LD_H,
+    io.instr === LD_W || io.instr === ST_W,
+    io.instr === LD_H || io.instr === LD_HU || io.instr === ST_H)
 
   io.ctrl.br_comp_ctrl := Cat(io.instr === BNE || io.instr === BGE || io.instr === BGEU,
     io.instr === BLT || io.instr === BGE || io.instr === BLTU || io.instr === BGEU,
-    io.instr === BEQ || io.instr === BNE || io.instr === BLT || io.instr === BGE
-  )
+    io.instr === BEQ || io.instr === BNE || io.instr === BLT || io.instr === BGE)
 
   io.ctrl.b := io.instr === B
 
