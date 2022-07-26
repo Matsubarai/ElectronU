@@ -92,7 +92,7 @@ class ElectronCore extends Module {
   })
   id_exe_sigs.alu_ctrl := decode.io.ctrl.alu_ctrl
   id_exe_sigs.muldiv_ctrl := decode.io.ctrl.muldiv_ctrl
-  id_exe_sigs.sel_src1 := Cat(decode.io.ctrl.sel_src(4, 3), !decode.io.ctrl.sel_src(4, 3).orR)
+  id_exe_sigs.sel_src1 := Cat(decode.io.ctrl.sel_src(5, 3), !decode.io.ctrl.sel_src(5, 3).orR)
   id_exe_sigs.sel_src2 := Cat(decode.io.ctrl.sel_src, !decode.io.ctrl.sel_src.orR)
   id_exe_sigs.reg2mem := decode.io.ctrl.reg2mem
   id_exe_sigs.mem2reg := decode.io.ctrl.mem2reg
@@ -117,9 +117,9 @@ class ElectronCore extends Module {
   val si12 = Cat(Fill(20, id_exe.bits.imm26(21)), id_exe.bits.imm26(21,10))
   val ui12 = id_exe.bits.imm26(21,10)
   val ui5 = id_exe.bits.imm26(14,10)
-  val si20 = id_exe.bits.imm26(24, 5)
-  alu.io.src1 := Mux1H(id_exe.bits.sel_src1, Seq(id_exe.bits.rf_rdata1, id_exe.bits.pc, si20))
-  alu.io.src2 := Mux1H(id_exe.bits.sel_src2, Seq(id_exe.bits.rf_rdata2, si12, ui12, ui5, 4.U(32.W), 12.U(32.W)))
+  val si20 = Cat(id_exe.bits.imm26(24, 5), Fill(12, 0.B))
+  alu.io.src1 := Mux1H(id_exe.bits.sel_src1, Seq(id_exe.bits.rf_rdata1, id_exe.bits.pc, id_exe.bits.pc, 0.U))
+  alu.io.src2 := Mux1H(id_exe.bits.sel_src2, Seq(id_exe.bits.rf_rdata2, si12, ui12, ui5, 4.U(32.W), si20, si20))
 
   val muldiv = Module(new MulDiv)
   muldiv.io.ctrl := id_exe.bits.muldiv_ctrl

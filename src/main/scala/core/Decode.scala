@@ -13,7 +13,7 @@ class CtrlSignals extends Bundle{
   val rj = UInt(5.W)
   val rk = UInt(5.W)
   val rd = UInt(5.W)
-  val sel_src = UInt(5.W)
+  val sel_src = UInt(6.W)
   val mem2reg = Bool()
   val reg2mem = Bool()
   val bhw = UInt(3.W)
@@ -40,7 +40,7 @@ class Decode extends Module {
     io.instr === LD_W || io.instr === ST_W ||
     io.instr === LD_BU || io.instr === LD_B || io.instr === ST_B ||
     io.instr === LD_HU || io.instr === LD_H || io.instr === ST_H ||
-    io.instr === JIRL || io.instr === BL){
+    io.instr === JIRL || io.instr === BL || io.instr === PCADDU12I || io.instr === LU12I_W){
     io.ctrl.alu_ctrl := ALU_ADD
   }.elsewhen(io.instr === SUB_W){
     io.ctrl.alu_ctrl := ALU_SUB
@@ -48,7 +48,7 @@ class Decode extends Module {
     io.ctrl.alu_ctrl := ALU_SLT
   }.elsewhen(io.instr === SLTU || io.instr === SLTUI){
     io.ctrl.alu_ctrl := ALU_SLTU
-  }.elsewhen(io.instr === SLL_W || io.instr === SLLI_W || io.instr === LU12I_W){
+  }.elsewhen(io.instr === SLL_W || io.instr === SLLI_W){
     io.ctrl.alu_ctrl := ALU_SLL
   }.elsewhen(io.instr === SRL_W || io.instr === SRLI_W){
     io.ctrl.alu_ctrl := ALU_SRL
@@ -69,6 +69,7 @@ class Decode extends Module {
     io.instr === MULH_W || io.instr === MUL_W || io.instr === DIV_W || io.instr === MOD_W)
 
   io.ctrl.sel_src := Cat(io.instr === LU12I_W,
+    io.instr === PCADDU12I,
     io.instr === JIRL || io.instr === BL,
     io.instr === SLLI_W || io.instr === SRLI_W || io.instr === SRAI_W,
     io.instr === ANDI || io.instr === ORI || io.instr === XORI,
