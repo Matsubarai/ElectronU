@@ -159,11 +159,10 @@ class ElectronCore extends Module {
   io.dmem.en := id_exe.valid && (id_exe.bits.mem2reg || id_exe.bits.reg2mem) //pre-MEM
   io.dmem.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
   io.dmem.wen := id_exe.valid && id_exe.bits.reg2mem //pre-MEM
-  val mask = Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
+  io.dmem.mask := Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
     Seq(UIntToOH(d_addr_trans.io.paddr(1, 0)),
       Mux(d_addr_trans.io.paddr(1), "b1100".U, "b0011".U),
-      "b1111".U)) //pre-MEM
-  io.dmem.mask := Seq(mask(3), mask(2), mask(1), mask(0)) //pre-MEM
+      "b1111".U)) //pre-MEM //pre-MEM
   io.dmem.wdata := Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
     Seq(Fill(4, id_exe.bits.rf_rdata2(7, 0)),
       Fill(2, id_exe.bits.rf_rdata2(15, 0)),
