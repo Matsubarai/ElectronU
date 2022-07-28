@@ -46,7 +46,7 @@ class ALU extends Module {
   val shift_result = Mux(is_sltu, shift_result_r, shift_result_l)
 
   val or_result = io.src1 | io.src2
-  val logic_result = Mux1H(UIntToOH(io.ctrl(1, 0)), Seq(~or_result, io.src1 ^ io.src2, io.src1 & io.src2, or_result))
+  val logic_result = Mux1H(UIntToOH(io.ctrl(1, 0)), Seq(~or_result, io.src1 & io.src2, io.src1 ^ io.src2, or_result))
 
   io.result := Mux1H(UIntToOH(io.ctrl(3, 2)), Seq(adder_result, logic_result, Cat(0.U(31.W), slt_result), shift_result))
 }

@@ -53,7 +53,7 @@ class Decode extends Module {
     io.instr === PCADDU12I || io.instr === LU12I_W, io.instr === SUB_W, io.instr === SLT || io.instr === SLTI,
     io.instr === SLTU || io.instr === SLTUI, io.instr === SLL_W || io.instr === SLLI_W,
     io.instr === SRL_W || io.instr === SRLI_W, io.instr === SRA_W || io.instr === SRAI_W,
-    io.instr === NOR, io.instr === AND, io.instr === OR, io.instr === XOR)),
+    io.instr === NOR, io.instr === AND, io.instr === OR, io.instr === XOR).reverse),
     Seq(ALU_ADD, ALU_SUB, ALU_SLT, ALU_SLTU, ALU_SLL, ALU_SRL, ALU_SRA, ALU_NOR, ALU_AND, ALU_OR, ALU_XOR))
 
   io.ctrl.bits.muldiv_ctrl := Cat(io.instr === DIV_W || io.instr === MOD_W || io.instr === DIV_WU || io.instr === MOD_WU,

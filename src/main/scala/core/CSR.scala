@@ -28,6 +28,7 @@ object CSR{
   def TID = 0x40.U
   def TCFG = 0x41.U
   def TVAL = 0x42.U
+  def TVAL_NaN = "b11111111111111111111111111111111".U
   def TICLR = 0x44.U
   def LLBCTL = 0x60.U
 }
@@ -117,15 +118,15 @@ class CSR extends Module {
   val ticlr   = Cat(0.U(31.W), ticlr_clr)
 
   //RD
-  val regfile = VecInit(Seq(0.U(32.W), crmd, prmd, euen,
+  val regfile = Seq(0.U(32.W), crmd, prmd, euen,
     ecfg, estat, era, badv, eentry,
     cpuid, save0, save1, save2, save3,
-    tid, tcfg, tval, ticlr, llbctl))
-  val rd_lookup = Cat(Seq(CRMD, PRMD, EUEN,
+    tid, tcfg, tval, ticlr, llbctl)
+  val rd_lookup_ = Cat(Seq(CRMD, PRMD, EUEN,
     ECFG, ESTAT, ERA, BADV, EENTRY,
     CPUID, SAVE0, SAVE1, SAVE2, SAVE3,
-    TID, TCFG, TVAL, TICLR, LLBCTL).map(io.rd_csr_num.bits === _))
-  rd_lookup := Cat(rd_lookup, !rd_lookup.orR)
+    TID, TCFG, TVAL, TICLR, LLBCTL).map(io.rd_csr_num.bits === _).reverse)
+  val rd_lookup = Cat(rd_lookup_, !rd_lookup_.orR)
 
   io.rdata := Mux(io.rd_csr_num.valid, 0.U, Mux1H(rd_lookup, regfile))
 
@@ -212,10 +213,10 @@ class CSR extends Module {
 
     tval := Cat(io.wdata(31, 2), 0.U(2.W))
   }.elsewhen(tcfg_en){
-    when(tval === 0xffffffff.U){
+    when(tval === TVAL_NaN){
       tval := tval
     }.elsewhen(tval === 0.U) {
-      tval := Mux(tcfg(1), Cat(tcfg(31, 2), 0.U(2.W)), 0xffffffff.U)
+      tval := Mux(tcfg(1), Cat(tcfg(31, 2), 0.U(2.W)), TVAL_NaN)
     }.otherwise {
       tval := tval - 1.U
     }
