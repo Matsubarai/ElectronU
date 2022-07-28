@@ -54,26 +54,27 @@ class ElectronCore extends Module {
   val rf = Module(new GR)
   rf.io.raddr1.valid := if_id.valid
   rf.io.raddr2.valid := if_id.valid
-  rf.io.raddr1.bits := decode.io.ctrl.rj
-  rf.io.raddr2.bits := Mux(decode.io.ctrl.reg2mem || decode.io.ctrl.br_comp_ctrl.orR, decode.io.ctrl.rd, decode.io.ctrl.rk)
+  rf.io.raddr1.bits := decode.io.ctrl.bits.rj
+  rf.io.raddr2.bits := Mux(decode.io.ctrl.bits.reg2mem || decode.io.ctrl.bits.br_comp_ctrl.orR ||
+    decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 0.U, decode.io.ctrl.bits.rd, decode.io.ctrl.bits.rk)
   val rf_rdata1 = Wire(UInt(32.W))
   val rf_rdata2 = Wire(UInt(32.W))
 
   val br_comp = Module(new BranchCompare)
-  br_comp.io.ctrl := decode.io.ctrl.br_comp_ctrl
+  br_comp.io.ctrl := decode.io.ctrl.bits.br_comp_ctrl
   br_comp.io.src1 := rf_rdata1
   br_comp.io.src2 := rf_rdata2
-  val br_taken = decode.io.ctrl.br_comp_ctrl.orR && !ld_stall && br_comp.io.result
-  val jump = decode.io.ctrl.b || decode.io.ctrl.bl || br_taken || decode.io.ctrl.jirl
-  val offs16 = Cat(Fill(14, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 10), 0.U(2.W))
-  val offs26 = Cat(Fill(4, decode.io.ctrl.imm26(25)), decode.io.ctrl.imm26(25, 0), 0.U(2.W))
+  val br_taken = decode.io.ctrl.bits.br_comp_ctrl.orR && !ld_stall && br_comp.io.result
+  val jump = decode.io.ctrl.bits.b || decode.io.ctrl.bits.bl || br_taken || decode.io.ctrl.bits.jirl
+  val offs16 = Cat(Fill(14, decode.io.ctrl.bits.imm26(25)), decode.io.ctrl.bits.imm26(25, 10), 0.U(2.W))
+  val offs26 = Cat(Fill(4, decode.io.ctrl.bits.imm26(25)), decode.io.ctrl.bits.imm26(25, 0), 0.U(2.W))
 
   jump_flush := if_id.valid && jump
 
   fetch.io.offs.valid := jump_flush
-  fetch.io.offs.bits := Mux(decode.io.ctrl.bl || decode.io.ctrl.b, offs26, offs16)
+  fetch.io.offs.bits := Mux(decode.io.ctrl.bits.bl || decode.io.ctrl.bits.b, offs26, offs16)
   fetch.io.base.valid := jump_flush
-  fetch.io.base.bits := Mux(decode.io.ctrl.jirl, rf_rdata1, if_id.bits.pc)
+  fetch.io.base.bits := Mux(decode.io.ctrl.bits.jirl, rf_rdata1, if_id.bits.pc)
 
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()
@@ -90,14 +91,17 @@ class ElectronCore extends Module {
     val rf_waddr = UInt()
     val pc = UInt()
   })
-  id_exe_sigs.alu_ctrl := decode.io.ctrl.alu_ctrl
-  id_exe_sigs.muldiv_ctrl := decode.io.ctrl.muldiv_ctrl
-  id_exe_sigs.sel_src1 := Cat(decode.io.ctrl.sel_src(5, 3), !decode.io.ctrl.sel_src(5, 3).orR)
-  id_exe_sigs.sel_src2 := Cat(decode.io.ctrl.sel_src, !decode.io.ctrl.sel_src.orR)
-  id_exe_sigs.reg2mem := decode.io.ctrl.reg2mem
-  id_exe_sigs.mem2reg := decode.io.ctrl.mem2reg
-  id_exe_sigs.bhw := decode.io.ctrl.bhw
-  id_exe_sigs.imm26 := decode.io.ctrl.imm26
+  id_exe_sigs.alu_ctrl := decode.io.ctrl.bits.alu_ctrl
+  id_exe_sigs.muldiv_ctrl := decode.io.ctrl.bits.muldiv_ctrl
+  id_exe_sigs.sel_src1 := Cat(decode.io.ctrl.bits.sel_src(5, 3), !decode.io.ctrl.bits.sel_src(5, 3).orR)
+  id_exe_sigs.sel_src2 := Cat(decode.io.ctrl.bits.sel_src, !decode.io.ctrl.bits.sel_src.orR)
+  id_exe_sigs.reg2mem := decode.io.ctrl.bits.reg2mem
+  id_exe_sigs.mem2reg := decode.io.ctrl.bits.mem2reg
+  id_exe_sigs.bhw := decode.io.ctrl.bits.bhw
+  id_exe_sigs.imm26 := decode.io.ctrl.bits.imm26
+  id_exe_sigs.rf_wen := !(decode.io.ctrl.bits.reg2mem || id_exe_sigs.csr_wen ||
+    decode.io.ctrl.bits.br_comp_ctrl.orR || decode.io.ctrl.bits.b)
+  id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bits.bl, 1.U(5.W), decode.io.ctrl.bits.rd)
   id_exe_sigs.rf_rdata1 := rf_rdata1
   id_exe_sigs.rf_rdata2 := rf_rdata2
   id_exe_sigs.rf_wen := !(decode.io.ctrl.reg2mem || decode.io.ctrl.br_comp_ctrl.orR || decode.io.ctrl.b)
@@ -117,7 +121,7 @@ class ElectronCore extends Module {
   val si12 = Cat(Fill(20, id_exe.bits.imm26(21)), id_exe.bits.imm26(21,10))
   val ui12 = id_exe.bits.imm26(21,10)
   val ui5 = id_exe.bits.imm26(14,10)
-  val si20 = Cat(id_exe.bits.imm26(24, 5), Fill(12, 0.B))
+  val si20 = Cat(id_exe.bits.imm26(24, 5), 0.U(12.W))
   alu.io.src1 := Mux1H(id_exe.bits.sel_src1, Seq(id_exe.bits.rf_rdata1, id_exe.bits.pc, id_exe.bits.pc, 0.U))
   alu.io.src2 := Mux1H(id_exe.bits.sel_src2, Seq(id_exe.bits.rf_rdata2, si12, ui12, ui5, 4.U(32.W), si20, si20))
 
@@ -154,16 +158,15 @@ class ElectronCore extends Module {
 
   printf(p"EXE_MEM: ${exe_mem.valid}\n")
 
-  d_addr_trans.io.vaddr := alu_result // pre-MEM
+  d_addr_trans.io.vaddr := alu.io.result // pre-MEM
 
   io.dmem.en := id_exe.valid && (id_exe.bits.mem2reg || id_exe.bits.reg2mem) //pre-MEM
   io.dmem.addr := d_addr_trans.io.paddr(15, 2) //pre-MEM
   io.dmem.wen := id_exe.valid && id_exe.bits.reg2mem //pre-MEM
-  val mask = Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
+  io.dmem.mask := Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
     Seq(UIntToOH(d_addr_trans.io.paddr(1, 0)),
       Mux(d_addr_trans.io.paddr(1), "b1100".U, "b0011".U),
       "b1111".U)) //pre-MEM
-  io.dmem.mask := Seq(mask(3), mask(2), mask(1), mask(0)) //pre-MEM
   io.dmem.wdata := Mux1H(UIntToOH(id_exe.bits.bhw(1, 0)),
     Seq(Fill(4, id_exe.bits.rf_rdata2(7, 0)),
       Fill(2, id_exe.bits.rf_rdata2(15, 0)),
