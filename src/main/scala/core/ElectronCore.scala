@@ -15,11 +15,13 @@ class ElectronCore extends Module {
   printf("----------\n")
   //IF
   val ld_stall = Wire(Bool())
+  val csr_rd_stall_exe = Wire(Bool())
+  val csr_rd_stall_mem = Wire(Bool())
   val fetch = Module(new Fetch)
-  fetch.io.stall := ld_stall
+  fetch.io.stall := ld_stall || csr_rd_stall_exe || csr_rd_stall_mem
 
   val i_addr_trans = Module(new AddrTrans)
-  i_addr_trans.io.vaddr := Mux(ld_stall, fetch.io.pc.bits, fetch.io.npc) //pre-IF
+  i_addr_trans.io.vaddr := Mux(ld_stall || csr_rd_stall_exe || csr_rd_stall_mem, fetch.io.pc.bits, fetch.io.npc) //pre-IF
   io.pc <> fetch.io.pc
 
   printf(p"pre-IF_IF: ${fetch.io.pc.valid}\n")
@@ -44,7 +46,7 @@ class ElectronCore extends Module {
   if_id_sigs.bits.pc := fetch.io.pc.bits
 
   //ID
-  val if_id = RegEnable(if_id_sigs, !ld_stall)
+  val if_id = RegEnable(if_id_sigs, !(ld_stall || csr_rd_stall_exe || csr_rd_stall_mem))
 
   printf(p"IF_ID: ${if_id.valid}\n")
   printf(p"pc:    0x${Hexadecimal(if_id.bits.pc)}\n")
@@ -80,7 +82,7 @@ class ElectronCore extends Module {
   br_comp.io.ctrl := decode.io.ctrl.bits.br_comp_ctrl
   br_comp.io.src1 := rf_rdata1
   br_comp.io.src2 := rf_rdata2
-  val br_taken = decode.io.ctrl.bits.br_comp_ctrl.orR && !ld_stall && br_comp.io.result
+  val br_taken = decode.io.ctrl.bits.br_comp_ctrl.orR && !(ld_stall || csr_rd_stall_exe || csr_rd_stall_mem) && br_comp.io.result
   val jump = decode.io.ctrl.bits.b || decode.io.ctrl.bits.bl || br_taken || decode.io.ctrl.bits.jirl
   val offs16 = Cat(Fill(14, decode.io.ctrl.bits.imm26(25)), decode.io.ctrl.bits.imm26(25, 10), 0.U(2.W))
   val offs26 = Cat(Fill(4, decode.io.ctrl.bits.imm26(25)), decode.io.ctrl.bits.imm26(25, 0), 0.U(2.W))
@@ -123,18 +125,20 @@ class ElectronCore extends Module {
   id_exe_sigs.rf_waddr := Mux(decode.io.ctrl.bits.bl, 1.U(5.W), decode.io.ctrl.bits.rd)
   id_exe_sigs.rf_rdata1 := rf_rdata1
   id_exe_sigs.rf_rdata2 := rf_rdata2
-  id_exe_sigs.csr_wen := 0.B//decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 0.U
-  id_exe_sigs.csr_ren := 0.B//decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 1.U
+  id_exe_sigs.csr_wen := decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 0.U
+  id_exe_sigs.csr_ren := decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 1.U
   id_exe_sigs.csr_num := csr_num
   id_exe_sigs.pc := if_id.bits.pc
 
   //EXE
-  val id_exe = Pipe(if_id.valid && !ld_stall, id_exe_sigs)
+  val id_exe = Pipe(if_id.valid && !(ld_stall || csr_rd_stall_exe || csr_rd_stall_mem), id_exe_sigs)
 
   printf(p"ID_EXE: ${id_exe.valid}\n")
 
-  ld_stall := if_id.valid && id_exe.valid && id_exe.bits.mem2reg && id_exe.bits.rf_waddr =/= 0.U &&
-    (id_exe.bits.rf_waddr === rf.io.raddr1.bits || id_exe.bits.rf_waddr === rf.io.raddr2.bits)
+  def isStall(wen: Bool, waddr: UInt) = if_id.valid && wen && (waddr === rf.io.raddr1.bits || waddr === rf.io.raddr2.bits) && waddr =/= 0.U
+
+  ld_stall := isStall(id_exe.valid && id_exe.bits.mem2reg, id_exe.bits.rf_waddr)
+  csr_rd_stall_exe := isStall(id_exe.valid && id_exe.bits.csr_ren && id_exe.bits.rf_wen, id_exe.bits.rf_waddr)
 
   val alu = Module(new ALU)
   alu.io.ctrl := id_exe.bits.alu_ctrl
@@ -171,6 +175,7 @@ class ElectronCore extends Module {
     val rf_rdata2 = UInt()
     val rf_wen = Bool()
     val rf_waddr = UInt()
+    val csr_rd_stall = Bool()
     val csr_wen = Bool()
     val csr_ren = Bool()
     val csr_num = UInt()
@@ -183,12 +188,15 @@ class ElectronCore extends Module {
   exe_mem_sigs.rf_rdata2 := id_exe.bits.rf_rdata2
   exe_mem_sigs.rf_wen := id_exe.bits.rf_wen
   exe_mem_sigs.rf_waddr := id_exe.bits.rf_waddr
+  exe_mem_sigs.csr_rd_stall := csr_rd_stall_exe
   exe_mem_sigs.csr_wen := id_exe.bits.csr_wen
   exe_mem_sigs.csr_num := id_exe.bits.csr_num
   exe_mem_sigs.csr_ren := id_exe.bits.csr_ren
 
   //MEM
-  val exe_mem = Pipe(id_exe.valid, exe_mem_sigs)
+  val exe_mem = Pipe(id_exe.valid && !csr_rd_stall_mem, exe_mem_sigs)
+
+  csr_rd_stall_mem := exe_mem.valid && exe_mem.bits.csr_rd_stall
 
   printf(p"EXE_MEM: ${exe_mem.valid}\n")
 
@@ -259,7 +267,7 @@ class ElectronCore extends Module {
     mem_wb.bits.rf_rdata2 & mem_wb.bits.rf_rdata1, mem_wb.bits.rf_rdata2)
 
   //Forwarding
-  def isForward(wen: Bool, waddr: UInt, raddr: UInt) = wen && waddr === raddr && waddr =/= 0.U
+  def isForward(wen: Bool, waddr: UInt, raddr: UInt) = if_id.valid && wen && waddr === raddr && waddr =/= 0.U
 
   val forward_r1_exe = isForward(id_exe.valid && id_exe.bits.rf_wen && !id_exe.bits.csr_ren && !id_exe.bits.mem2reg, id_exe.bits.rf_waddr, rf.io.raddr1.bits)
   val forward_r1_mem = isForward(exe_mem.valid && exe_mem.bits.rf_wen && !exe_mem.bits.csr_ren, exe_mem.bits.rf_waddr, rf.io.raddr1.bits)
