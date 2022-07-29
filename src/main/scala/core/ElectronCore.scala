@@ -17,6 +17,9 @@ class ElectronCore extends Module {
   val ld_stall = Wire(Bool())
   val csr_rd_stall_exe = Wire(Bool())
   val csr_rd_stall_mem = Wire(Bool())
+  val jump_flush = Wire(Bool())
+  val excp_flush = Wire(Bool())
+
   val fetch = Module(new Fetch)
   fetch.io.stall := ld_stall || csr_rd_stall_exe || csr_rd_stall_mem
 
@@ -33,7 +36,6 @@ class ElectronCore extends Module {
   io.imem.mask := DontCare
   io.imem.wdata := DontCare
 
-  val jump_flush = Wire(Bool())
   val if_id_sigs = Wire(new Bundle {
     val valid = Bool()
     val bits = new Bundle() {
@@ -41,7 +43,7 @@ class ElectronCore extends Module {
       val pc = UInt()
     }
   })
-  if_id_sigs.valid := fetch.io.pc.valid && !jump_flush
+  if_id_sigs.valid := fetch.io.pc.valid && !(jump_flush || excp_flush)
   if_id_sigs.bits.instr := io.imem.rdata
   if_id_sigs.bits.pc := fetch.io.pc.bits
 
@@ -89,11 +91,6 @@ class ElectronCore extends Module {
 
   jump_flush := if_id.valid && jump
 
-  fetch.io.offs.valid := jump_flush
-  fetch.io.offs.bits := Mux(decode.io.ctrl.bits.bl || decode.io.ctrl.bits.b, offs26, offs16)
-  fetch.io.base.valid := jump_flush
-  fetch.io.base.bits := Mux(decode.io.ctrl.bits.jirl, rf_rdata1, if_id.bits.pc)
-
   val id_exe_sigs = Wire(new Bundle{
     val alu_ctrl = UInt()
     val muldiv_ctrl = UInt()
@@ -110,6 +107,7 @@ class ElectronCore extends Module {
     val csr_wen = Bool()
     val csr_ren = Bool()
     val csr_num = UInt()
+    val excp_vec = UInt()
     val pc = UInt()
   })
   id_exe_sigs.alu_ctrl := decode.io.ctrl.bits.alu_ctrl
@@ -128,10 +126,11 @@ class ElectronCore extends Module {
   id_exe_sigs.csr_wen := decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 0.U
   id_exe_sigs.csr_ren := decode.io.ctrl.bits.csr && decode.io.ctrl.bits.rj =/= 1.U
   id_exe_sigs.csr_num := csr_num
+  id_exe_sigs.excp_vec := Cat(excp_ine, excp_brk, excp_sys, excp_int)
   id_exe_sigs.pc := if_id.bits.pc
 
   //EXE
-  val id_exe = Pipe(if_id.valid && !(ld_stall || csr_rd_stall_exe || csr_rd_stall_mem), id_exe_sigs)
+  val id_exe = Pipe(if_id.valid && !(ld_stall || csr_rd_stall_exe || csr_rd_stall_mem || excp_flush), id_exe_sigs)
 
   printf(p"ID_EXE: ${id_exe.valid}\n")
 
@@ -179,6 +178,8 @@ class ElectronCore extends Module {
     val csr_wen = Bool()
     val csr_ren = Bool()
     val csr_num = UInt()
+    val excp_vec = UInt()
+    val pc = UInt()
   })
   exe_mem_sigs.alu_result := alu_result
   exe_mem_sigs.mem2reg := id_exe.bits.mem2reg
@@ -192,9 +193,11 @@ class ElectronCore extends Module {
   exe_mem_sigs.csr_wen := id_exe.bits.csr_wen
   exe_mem_sigs.csr_num := id_exe.bits.csr_num
   exe_mem_sigs.csr_ren := id_exe.bits.csr_ren
+  exe_mem_sigs.excp_vec := Cat(excp_ale, id_exe.bits.excp_vec)
+  exe_mem_sigs.pc := id_exe.bits.pc
 
   //MEM
-  val exe_mem = Pipe(id_exe.valid && !csr_rd_stall_mem, exe_mem_sigs)
+  val exe_mem = Pipe(id_exe.valid && !excp_flush, exe_mem_sigs)
 
   csr_rd_stall_mem := exe_mem.valid && exe_mem.bits.csr_rd_stall
 
@@ -233,6 +236,8 @@ class ElectronCore extends Module {
     val csr_wen = Bool()
     val csr_ren = Bool()
     val csr_num = UInt()
+    val excp_vec = UInt()
+    val pc = UInt()
   })
   mem_wb_sigs.rf_rdata1 := exe_mem.bits.rf_rdata1
   mem_wb_sigs.rf_rdata2 := exe_mem.bits.rf_rdata2
@@ -242,9 +247,11 @@ class ElectronCore extends Module {
   mem_wb_sigs.csr_wen := exe_mem.bits.csr_wen
   mem_wb_sigs.csr_ren := exe_mem.bits.csr_ren
   mem_wb_sigs.csr_num := exe_mem.bits.csr_num
+  mem_wb_sigs.excp_vec := exe_mem.bits.excp_vec
+  mem_wb_sigs.pc := exe_mem.bits.pc
 
   //WB
-  val mem_wb = Pipe(exe_mem.valid, mem_wb_sigs)
+  val mem_wb = Pipe(exe_mem.valid && !excp_flush, mem_wb_sigs)
 
   printf(p"MEM_WB: ${mem_wb.valid}\n")
 
@@ -258,6 +265,16 @@ class ElectronCore extends Module {
     printf(p"wreg:  r${Hexadecimal(rf.io.waddr.bits)}\n")
     printf(p"wdata: 0x${Hexadecimal(rf.io.wdata)}\n")
   }
+
+  csr.io.ctrl.excp.valid := mem_wb.valid && mem_wb.bits.excp_vec.orR
+  csr.io.ctrl.excp.bits := mem_wb.bits.excp_vec
+  csr.io.ctrl.epc := mem_wb.bits.pc
+  excp_flush := csr.io.ctrl.excp.valid
+
+  fetch.io.offs.valid := excp_flush || jump_flush
+  fetch.io.offs.bits := Mux(excp_flush, 0.U, Mux(decode.io.ctrl.bits.bl || decode.io.ctrl.bits.b, offs26, offs16))
+  fetch.io.base.valid := excp_flush || jump_flush
+  fetch.io.base.bits := Mux(excp_flush, csr.io.ctrl.eentry, Mux(decode.io.ctrl.bits.jirl, rf_rdata1, if_id.bits.pc))
 
   csr.io.rd_csr_num.valid := mem_wb.valid && mem_wb.bits.csr_ren
   csr.io.rd_csr_num.bits := mem_wb.bits.csr_num

@@ -3,13 +3,6 @@ package core
 import chisel3._
 import chisel3.util._
 
-
-class CSRCtrlSignals extends Bundle{
-  val int = Output(Bool())
-  val hwi = Input(UInt(8.W))
-  val ipi = Input(Bool())
-}
-
 object CSR{
   val SZ_CSR_NUM = 14
   def CRMD = 0x0.U
@@ -34,19 +27,29 @@ object CSR{
 }
 
 object Ecode{
-  val SZ_ECODE = 15
-  def INT   = "b0000000".U
+  def SZ_EXCP_VEC = 5
+  def INT   = "b000000".U
 //  def ADEF  = "b0001000".U
 //  def ADEM  = "b1001000".U
-  def ALE   = "b0001001".U
-  def SYS   = "b0001011".U
-  def BRK   = "b0001100".U
-  def INE   = "b0001101".U
+  def ALE   = "b001001".U
+  def SYS   = "b001011".U
+  def BRK   = "b001100".U
+  def INE   = "b001101".U
 //  def IPE   = "b0001110".U
 //  def FPD   = "b0001111".U
 }
 
 import CSR._
+import Ecode._
+
+class CSRCtrlSignals extends Bundle{
+  val int = Output(Bool())
+  val hwi = Input(UInt(8.W))
+  val ipi = Input(Bool())
+  val excp = Flipped(Valid(UInt(SZ_EXCP_VEC.W)))
+  val epc = Input(UInt(32.W))
+  val eentry = Output(UInt(32.W))
+}
 
 class CSR extends Module {
   val io = IO(new Bundle() {
@@ -131,10 +134,14 @@ class CSR extends Module {
   io.rdata := Mux(io.rd_csr_num.valid, 0.U, Mux1H(rd_lookup, regfile))
 
   io.ctrl.int := crmd(2) && (ecfg(12, 0) & estat(12, 0)).orR
+  io.ctrl.eentry := eentry
 
   //WR
   //CRMD
-  when(io.wr_csr_num.valid && io.wr_csr_num.bits === CRMD){
+  when(io.ctrl.excp.valid){
+    plv := 0.U
+    ie := 0.B
+  }.elsewhen(io.wr_csr_num.valid && io.wr_csr_num.bits === CRMD){
     plv := io.wdata(1, 0)
     ie := io.wdata(2)
     da := io.wdata(3)
@@ -146,7 +153,10 @@ class CSR extends Module {
   //TODO: ertn
 
   //PRMD
-  when(io.wr_csr_num.valid && io.wr_csr_num.bits === PRMD){
+  when(io.ctrl.excp.valid){
+    pplv := plv
+    pie := ie
+  }.elsewhen(io.wr_csr_num.valid && io.wr_csr_num.bits === PRMD){
     pplv := io.wdata(1, 0)
     pie := io.wdata(2)
   }
@@ -168,11 +178,20 @@ class CSR extends Module {
     tis := 1.B
   }
   ipis := io.ctrl.ipi
-
-  //TODO: ecode
+  ecode := PriorityMux(Seq(
+    !io.ctrl.excp.valid -> ecode,
+    io.ctrl.excp.bits(0) -> INT,
+    io.ctrl.excp.bits(1) -> SYS,
+    io.ctrl.excp.bits(2) -> BRK,
+    io.ctrl.excp.bits(3) -> INE,
+    io.ctrl.excp.bits(4) -> ALE,
+  ))
+  esubcode := 0.U
 
   //ERA
-  when(io.wr_csr_num.valid && io.wr_csr_num.bits === ERA){
+  when(io.ctrl.excp.valid){
+    era := io.ctrl.epc
+  }.elsewhen(io.wr_csr_num.valid && io.wr_csr_num.bits === ERA){
     era := io.wdata
   }
 
